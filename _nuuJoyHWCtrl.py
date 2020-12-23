@@ -83,14 +83,14 @@ class constantRateAcquisition():
 class IMUSensor_MPU6050:
 
     '''
-    This script was modified from https://github.com/m-rtijn/mpu6050/blob/master/mpu6050/mpu6050.py
+    This class was modified from https://github.com/m-rtijn/mpu6050/blob/master/mpu6050/mpu6050.py
     ---- Original script declaration ---
         This program handles the communication over I2C
         between a Raspberry Pi and a MPU-6050 Gyroscope / Accelerometer combo.
         Made by: MrTijn/Tijndagamer
         Released under the MIT License
         Copyright (c) 2015, 2016, 2017 MrTijn/Tijndagamer
-    Also this script will leverage MIT License from original
+    Also IMUSensor_MPU6050 class this script will leverage MIT License from original
     Purpose:
         MPU6050 sensor acquisition
     Example:
