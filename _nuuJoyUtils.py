@@ -7,6 +7,7 @@ import time
 import math
 import random
 import string
+import collections
 import imaplib
 import smtplib
 import tkinter
@@ -35,7 +36,7 @@ Content
         emailobject
         emailReader
         emailWriter
-        pyqtgraph_simpleContinuousPlot
+        simpleContinuousPlot
     function
         randomText
         userDialog
@@ -152,7 +153,7 @@ class logFileGen(object):
             print(mylog)
     '''
     def __init__(self,columns,activelyReport=False,printOut=False,logFilePath=None):
-        self._keys = OrderedDict()
+        self._keys = collections.OrderedDict()
         for name in columns:
             if isinstance(name,str):
                 self._keys.update({name:None})
@@ -481,7 +482,6 @@ class emailWriter():
         Example:
             with emailWriter('myemail@someprovider.com','mypassword') as mail_writer:
                 mail_writer.sendmail('sendtosomeone@someprovider.com','mailsubject','mailbody')
-                
     '''
     def __init__(self,user,psswrd):
         self.user   = user
@@ -497,7 +497,23 @@ class emailWriter():
         self.server.sendmail(self.user,to_email,'Subject: {}\n\n{}'.format(subject,content))
 
 
-class pyqtgraph_simpleContinuousPlot():
+class simpleContinuousPlot():
+    '''
+    Simple continuous graph plot using pyqtgraph module
+        Purpose:
+            Visualize data in real-time. Working with constantRateAcquisition module
+        Example:
+            batch_setting = [{'name':'accl_x','key':'x',
+                              'sharevar':shareDict_accl,'sharelock':dataAcqs.sv_lock,
+                              'x_range':250,'y_range':(-1.05,1.05),'color':'r'},
+                             {'name':'accl_y','key':'y',
+                              'sharevar':shareDict_accl,'sharelock':dataAcqs.sv_lock,
+                              'x_range':250,'y_range':(-1.05,1.05),'color':'g'},]
+            graph = simpleContinuousPlot(rate_hz=50.0,
+                                         batch_setting=batch_setting,
+                                         shareEvent=shareEvent)
+            graph.continuous_plot()
+    '''
     class XYCurves():
         def __init__(self,canvas,name,key,sharevar,sharelock,x_range,y_range,color):
             self.name      = name
