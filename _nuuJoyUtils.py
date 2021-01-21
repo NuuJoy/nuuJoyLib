@@ -313,7 +313,7 @@ class autologdict(object):
             results = autologdict(results). Anyway, standalone-use is also available.
     '''
     def __init__(self,witeResults=None):
-        self._keys = OrderedDict()
+        self._keys = collections.OrderedDict()
         self._witeResults = witeResults
     def __setitem__(self,name,value):
         if self._witeResults:
@@ -467,7 +467,7 @@ class emailReader():
             _, data = server.search(None,mailbox)
             for num in data[0].split():
                 _, data = server.fetch(num,'(RFC822)')
-                mailobj = emailObject(data[0][1])
+                mailobj = emailobject(data[0][1])
                 if mark in mailobj.subject:
                     self.emailList.append(mailobj)
                 else:
