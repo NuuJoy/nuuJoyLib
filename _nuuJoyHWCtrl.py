@@ -4,11 +4,12 @@
 import time
 import logging
 import threading
+import multiprocessing
 
 import smbus
 
 
-__version__ = (2020,12,23,'alpha')
+__version__ = (2021,1,21,'alpha')
 
 
 '''
@@ -29,7 +30,7 @@ class constantRateAcquisition():
         Continouse acquire data from sensor, working with multiprocessing-share-value and threading-event
     Example:
         dataAcqs = constantRateAcquisition(func_list=(sense.get_accelerometer_raw,sense.get_gyroscope_raw,), # list of function
-                                           output_list=(None,(shareValue,'value')), # list of share-value output (or other assignable object)
+                                           output_list=(None,(shareValue,'value'),(shareValue,None)), # list of share-value output (or other assignable object)
                                            rate_limit=100,  # 100 Hz
                                            stop_event=None, # no event stop used
                                            counter=loop)    # do acquisition with exact times
@@ -39,15 +40,13 @@ class constantRateAcquisition():
     class _nulloutput():
         def __setattr__(self,name,val):
             pass
-    class _nullevent():
-        def is_set(self):
-            return False
 
-    def __init__(self,func_list,output_list,rate_limit,stop_event=None,hw_lock=None,counter=0):
+    def __init__(self,func_list,output_list,rate_limit,stop_event=None,hw_lock=None,sv_lock=None,counter=None):
         self.func_list   = list(func_list) if isinstance(func_list,(list,tuple,)) else [func_list]
         self.output_list = list(output_list) if isinstance(output_list,(list,tuple,)) else [output_list]
-        self.stop_event  = stop_event if stop_event else threading.Event()
-        self.hw_lock     = hw_lock if hw_lock else threading.Lock()
+        self.stop_event  = stop_event if stop_event else multiprocessing.Event()
+        self.hw_lock     = hw_lock if hw_lock else multiprocessing.Lock() # hardware lock
+        self.sv_lock     = sv_lock if sv_lock else multiprocessing.Lock() # share-value lock
         for i,output in enumerate(self.output_list):
             if not(output):
                 self.output_list[i] = (self._nulloutput(),'null')
@@ -60,26 +59,41 @@ class constantRateAcquisition():
         auto_compensate    = 0.0
         while not(self.stop_event.is_set()):
             try:
+                if not(self.counter is None):
+                    if self.counter:
+                        self.counter -= 1
+                    else:
+                        break
                 current_timestamp  = time.time()
                 timeinc_error      = (current_timestamp-previous_timestamp)-self.time_limit
                 auto_compensate   += timeinc_error
                 previous_timestamp = current_timestamp
-                
                 for func,(output,attr) in zip(self.func_list,self.output_list):
                     with self.hw_lock:
-                        setattr(output,attr,func())
-
-                if self.counter:
-                    self.counter -= 1
-                    if not(self.counter):
-                        break
-
+                        func_output = func()
+                    with self.sv_lock:
+                        if attr:
+                            setattr(output,attr,func_output)
+                        elif isinstance(func_output,(dict,)):
+                            for key,val in func_output.items():
+                                if not key in output:
+                                    output[key] = []
+                                output[key] += [val]
                 sleep_time = self.time_limit-(time.time()-current_timestamp)-auto_compensate
                 time.sleep(max(0.0,sleep_time))
             except Exception as err:
                 print('Exception detect: ', err)
 
+    def start_acquiring_thread(self):
+        thread = threading.Thread(target=self.start_acquiring,daemon=True,)
+        thread.start()
+        return thread
 
+    def start_acquiring_multiprocess(self):
+        process = multiprocessing.Process(target=self.start_acquiring,daemon=True,)
+        process.start()
+        return process
+ 
 class IMUSensor_MPU6050:
 
     '''
@@ -103,8 +117,8 @@ class IMUSensor_MPU6050:
         print('gyroscope_mode    : ',sensor.gyroscope_mode) # gyroscope mode getter
         print('lowpassfilter_mode: ',sensor.lowpassfilter_mode) # low-pass filter mode getter
         print('temperature data read: ',sensor.get_temperature()) # temperature sensor data
-        print('accelerometer data read: ',sensor.get_accl_data()) # accelerometer sensor data
-        print('gyroscope data read: ',sensor.get_gyro_data()) # gyroscope sensor data
+        print('accelerometer data read: ',sensor.get_accelerometer_data()) # accelerometer sensor data
+        print('gyroscope data read: ',sensor.get_gyroscope_data()) # gyroscope sensor data
     '''
 
     def __init__(self,device_addr=0x68,
@@ -135,16 +149,16 @@ class IMUSensor_MPU6050:
                                   'ACCL_5HZ_GYRO_5HZ':{'regis':0x06},}
         # Gyroscope config
         self.gyro_config_addr = 0x1B
-        self.gyro_mode = {'GYRO_250DEG': {'regis':0x00,'scale':131.0},
-                          'GYRO_500DEG': {'regis':0x08,'scale':65.5},
-                          'GYRO_1000DEG':{'regis':0x10,'scale':32.8},
-                          'GYRO_2000DEG':{'regis':0x18,'scale':16.4},}
+        self.gyro_mode = {'GYRO_250DEG': {'regis':0x00,'scale':131.0,'range':250.0},
+                          'GYRO_500DEG': {'regis':0x08,'scale':65.5,'range':500.0},
+                          'GYRO_1000DEG':{'regis':0x10,'scale':32.8,'range':1000.0},
+                          'GYRO_2000DEG':{'regis':0x18,'scale':16.4,'range':2000.0},}
         # Accelerometer config
         self.accl_config_addr = 0x1C
-        self.accl_mode = {'ACCL_2G': {'regis':0x00,'scale':16384.0},
-                          'ACCL_4G': {'regis':0x08,'scale':8192.0},
-                          'ACCL_8G': {'regis':0x10,'scale':4096.0},
-                          'ACCL_16G':{'regis':0x18,'scale':2048.0},}
+        self.accl_mode = {'ACCL_2G': {'regis':0x00,'scale':16384.0,'range':2.0},
+                          'ACCL_4G': {'regis':0x08,'scale':8192.0,'range':4.0},
+                          'ACCL_8G': {'regis':0x10,'scale':4096.0,'range':8.0},
+                          'ACCL_16G':{'regis':0x18,'scale':2048.0,'range':16.0},}
         # Sensor reading address
         self.TEMP_OUT    = (0x41,0x42,)
         self.GYRO_XOUT0  = (0x43,0x44,)
@@ -153,10 +167,16 @@ class IMUSensor_MPU6050:
         self.ACCEL_XOUT0 = (0x3B,0x3C,)
         self.ACCEL_YOUT0 = (0x3D,0x3E,)
         self.ACCEL_ZOUT0 = (0x3F,0x40,)
-        # Get current setting
+        # Get current scale
         self.accl_scale = self.accl_mode[self.accelerometer_mode]['scale']
+        logging.debug('self.accl_scale: {}'.format(self.accl_scale))
         self.gyro_scale = self.gyro_mode[self.gyroscope_mode]['scale']
-
+        logging.debug('self.gyro_scale: {}'.format(self.gyro_scale))
+        # Get current range
+        self.accl_range = self.accl_mode[self.accelerometer_mode]['range']
+        logging.debug('self.accl_range: {}'.format(self.accl_range))
+        self.gyro_range = self.gyro_mode[self.gyroscope_mode]['range']
+        logging.debug('self.gyro_range: {}'.format(self.gyro_range))
         # Perform self functional check
         if not(self._self_functional_check()):
             raise IOError('self functional check: Fail')
@@ -216,21 +236,33 @@ class IMUSensor_MPU6050:
         logging.debug('from get_temperature temp:{}'.format(actual_temp))
         return actual_temp
 
-    def get_accl_data(self, g = False):
-        logging.debug('enter get_accl_data')
-        x = self.read_i2c_value(self.ACCEL_XOUT0)/self.accl_scale
-        y = self.read_i2c_value(self.ACCEL_YOUT0)/self.accl_scale
-        z = self.read_i2c_value(self.ACCEL_ZOUT0)/self.accl_scale
-        logging.debug('from get_accl_data x:{}, y:{}, z:{}'.format(x,y,z))
-        return {'x': x, 'y': y, 'z': z}
+    def get_accelerometer_data(self,axis='xyz',num=1):
+        logging.debug('enter get_accelerometer_data')
+        axaddr = {'x':self.ACCEL_XOUT0,'y':self.ACCEL_YOUT0,'z':self.ACCEL_ZOUT0}
+        result = {}
+        for s in axis:
+            if not(s in 'xyz'):
+                raise ValueError('Invalid axis input')
+            else:
+                result.update({s:[]})
+        for _ in range(num):
+            for ax in axis:
+                result[ax].append(self.read_i2c_value(axaddr[ax])/self.accl_scale)
+        return result
 
-    def get_gyro_data(self, g = False):
-        logging.debug('enter get_gyro_data')
-        x = self.read_i2c_value(self.GYRO_XOUT0)/self.gyro_scale
-        y = self.read_i2c_value(self.GYRO_YOUT0)/self.gyro_scale
-        z = self.read_i2c_value(self.GYRO_ZOUT0)/self.gyro_scale
-        logging.debug('from get_gyro_data x:{}, y:{}, z:{}'.format(x,y,z))
-        return {'x': x, 'y': y, 'z': z}
+    def get_gyroscope_data(self,axis='xyz',num=1):
+        logging.debug('enter get_gyroscope_data')
+        axaddr = {'x':self.GYRO_XOUT0,'y':self.GYRO_YOUT0,'z':self.GYRO_ZOUT0}
+        result = {}
+        for s in axis:
+            if not(s in 'xyz'):
+                raise ValueError('Invalid axis input')
+            else:
+                result.update({s:[]})
+        for _ in range(num):
+            for ax in axis:
+                result[ax].append(self.read_i2c_value(axaddr[ax])/self.gyro_scale)
+        return result
 
     def _self_functional_check(self):
         try:
@@ -253,11 +285,11 @@ class IMUSensor_MPU6050:
                 if (self.accelerometer_mode != key):
                     logging.error('accelerometer_mode {} set fail'.format(key))
                     success_flag = False
-            accldata = self.get_accl_data() 
+            accldata = self.get_accelerometer_data() 
             if accldata['x'] == accldata['y'] == accldata['z'] == 0.0:
                 logging.error('accelerometer data acquiring fail')
                 success_flag = False
-            gyrodata = self.get_gyro_data() 
+            gyrodata = self.get_gyroscope_data() 
             if gyrodata['x'] == gyrodata['y'] == gyrodata['z'] == 0.0:
                 logging.error('gyroscope data acquiring fail')
                 success_flag = False
