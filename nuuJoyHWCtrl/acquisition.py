@@ -2,9 +2,10 @@
 
 
 import time
+import queue
 import threading
 import multiprocessing
-
+from multiprocessing.managers import BaseProxy
 
 __version__ = (2021,1,26,'beta')
 
@@ -59,13 +60,28 @@ class constantRateAcquisition():
                     with self.hw_lock:
                         func_output = func()
                     with self.sv_lock:
-                        if attr:
-                            setattr(output,attr,func_output)
-                        elif isinstance(func_output,(dict,)):
-                            for key,val in func_output.items():
-                                if not key in output:
-                                    output[key] = []
-                                output[key] += [val]
+                        if isinstance(output,(multiprocessing.managers.BaseProxy,)):
+                            if attr:
+                                output.put({attr:func_output})
+                            elif isinstance(func_output,(dict,)):
+                                for key,val in func_output.items():
+                                    try:
+                                        output.put({key:val},False)
+                                    except queue.Full:
+                                        # print('Queue is full. Value droped')
+                                        pass
+                            else:
+                                raise ValueError('Invalid output_list: "func_output" should be dict if "attr" is None')
+                        else:
+                            if attr:
+                                setattr(output,attr,func_output)
+                            elif isinstance(func_output,(dict,)):
+                                for key,val in func_output.items():
+                                    if not key in output:
+                                        output[key] = []
+                                    output[key] += [val]
+                            else:
+                                raise ValueError('Invalid output_list: "func_output" should be dict if "attr" is None')
                 sleep_time = self.time_limit-(time.time()-current_timestamp)-auto_compensate
                 time.sleep(max(0.0,sleep_time))
             except Exception as err:
