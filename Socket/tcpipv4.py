@@ -6,7 +6,7 @@ import socket
 import threading
 import multiprocessing
 import multiprocessing.managers
-from nuuJoyLib.nuuJoySocket.utils import user_socket
+from nuuJoyLib.Socket.utils import user_socket
 
 
 __version__ = (2021,1,26,'beta')
