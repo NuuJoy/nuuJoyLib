@@ -2,7 +2,11 @@
 
 
 import time
-from utils import user_socket
+import socket
+import threading
+import multiprocessing
+import multiprocessing.managers
+from nuuJoyLib.nuuJoySocket.utils import user_socket
 
 
 __version__ = (2021,1,26,'beta')
@@ -95,4 +99,51 @@ class client_socket(user_socket):
         if not(portflag): raise(OSError('Can\'t find server'))
         print('server connected')
         return self
+
+
+class mySyncMngr(multiprocessing.managers.SyncManager,):
+    def __init__(self,address=None,authkey=b'default',startserver=False,queuename=('upstrm','dnstrm',),queuesize=(0,0,)):
+        if not(address):
+            port = 13999
+            try:
+                ipaddr = socket.gethostbyname(socket.gethostname()+'.local')
+            except:
+                s = socket.socket(socket.AF_INET,socket.SOCK_DGRAM)
+                s.connect(('128.128.128.128',port))
+                ipaddr = s.getsockname()[0]
+            self.initaddr = (ipaddr,port)
+        else:
+            self.initaddr = address
+        self.authkey      = authkey
+        self.startserver  = startserver
+        self.queuename    = queuename
+        self.queuesize    = queuesize
+        # portal registeration
+        server_queue = {}    
+        for qname,qsize in zip(self.queuename,self.queuesize):
+            server_queue.update({qname:multiprocessing.Queue(maxsize=qsize),})
+            mySyncMngr.register(qname, callable=lambda:server_queue[qname])
+        # init super class
+        super().__init__(self.initaddr,self.authkey)
+    def __enter__(self):
+        if self.startserver:
+            print('Starting new server... {}'.format(self.initaddr))
+            self.server_h = self.get_server()
+            return self
+        else:
+            print('Connecting to server...{}'.format(self.initaddr))
+            self.connect()
+            return self
+    def __exit__(self,*args):
+        pass
+    def serve_forever(self):
+        self.server_h.serve_forever()
+    def serve_forever_thread(self):
+        thread = threading.Thread(target=self.serve_forever,daemon=True,)
+        thread.start()
+        return thread
+    def serve_forever_process(self):
+        process = multiprocessing.Process(target=self.serve_forever,daemon=True,)
+        process.start()
+        return process
 
