@@ -5,10 +5,9 @@ import time
 import queue
 import threading
 import multiprocessing
-import multiprocessing.queues
 
 
-__version__ = (2021,1,26,'beta')
+__version__ = (2021,1,28,'beta')
 
 
 class constantRateAcquisition():
@@ -30,7 +29,7 @@ class constantRateAcquisition():
         def __setattr__(self,name,val):
             pass
 
-    def __init__(self,func_list,output_list,rate_limit,stop_event=None,hw_lock=None,sv_lock=None,counter=None):
+    def __init__(self,func_list,output_list,rate_limit,stop_event=None,hw_lock=None,sv_lock=None,counter=None,keep_run_on_error=True):
         if isinstance(func_list,(list,tuple,)):
             self.func_list = list(func_list)
         else:
@@ -47,11 +46,9 @@ class constantRateAcquisition():
                 self.output_list[i] = (self._nulloutput(),'null')
             elif len(output) != 2:
                 raise ValueError('Invalid "output_list", sholde be "None" or "2-element List"')
-        print(self.output_list)
         self.time_limit  = 1.0/rate_limit
-        
         self.counter     = counter
-
+        self.keep_run_on_error = keep_run_on_error
     def start_acquiring(self):
         previous_timestamp = time.time()
         auto_compensate    = 0.0
@@ -70,7 +67,7 @@ class constantRateAcquisition():
                     with self.hw_lock:
                         func_output = func()
                     with self.sv_lock:
-                        if isinstance(output,(multiprocessing.queues.Queue,)):
+                        if hasattr(output,'full'):
                             if attr:
                                 output.put({attr:func_output})
                             elif isinstance(func_output,(dict,)):
@@ -94,6 +91,8 @@ class constantRateAcquisition():
                 time.sleep(max(0.0,sleep_time))
             except Exception as err:
                 print('Exception detect: ', err)
+                if not(self.keep_run_on_error):
+                    raise Exception(err)
 
     def start_acquiring_thread(self):
         thread = threading.Thread(target=self.start_acquiring,daemon=True,)
