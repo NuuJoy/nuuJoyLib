@@ -9,7 +9,7 @@ import multiprocessing.managers
 from nuuJoyLib.Socket.utils import user_socket
 
 
-__version__ = (2021,1,26,'beta')
+__version__ = (2021,1,28,'beta')
 
 
 class server_socket(user_socket):
@@ -116,13 +116,20 @@ class mySyncMngr(multiprocessing.managers.SyncManager,):
             self.initaddr = address
         self.authkey      = authkey
         self.startserver  = startserver
-        self.queuename    = queuename
-        self.queuesize    = queuesize
+        self.queuename    = list(queuename) + ['null' for _ in range(8-len(list(queuename)))]
+        self.queuesize    = list(queuesize) + [0 for _ in range(8-len(list(queuename)))]
         # portal registeration
-        server_queue = {}    
+        self.server_queue = {}    
         for qname,qsize in zip(self.queuename,self.queuesize):
-            server_queue.update({qname:multiprocessing.Queue(maxsize=qsize),})
-            mySyncMngr.register(qname, callable=lambda:server_queue[qname])
+            self.server_queue.update({qname:multiprocessing.Queue(maxsize=qsize),})
+        mySyncMngr.register(self.queuename[0], callable=lambda:self.server_queue[self.queuename[0]])
+        mySyncMngr.register(self.queuename[1], callable=lambda:self.server_queue[self.queuename[1]])
+        mySyncMngr.register(self.queuename[2], callable=lambda:self.server_queue[self.queuename[2]])
+        mySyncMngr.register(self.queuename[3], callable=lambda:self.server_queue[self.queuename[3]])
+        mySyncMngr.register(self.queuename[4], callable=lambda:self.server_queue[self.queuename[4]])
+        mySyncMngr.register(self.queuename[5], callable=lambda:self.server_queue[self.queuename[5]])
+        mySyncMngr.register(self.queuename[6], callable=lambda:self.server_queue[self.queuename[6]])
+        mySyncMngr.register(self.queuename[7], callable=lambda:self.server_queue[self.queuename[7]])
         # init super class
         super().__init__(self.initaddr,self.authkey)
     def __enter__(self):
