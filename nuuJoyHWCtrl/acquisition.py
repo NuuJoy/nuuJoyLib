@@ -5,7 +5,8 @@ import time
 import queue
 import threading
 import multiprocessing
-from multiprocessing.managers import BaseProxy
+import multiprocessing.queues
+
 
 __version__ = (2021,1,26,'beta')
 
@@ -30,14 +31,23 @@ class constantRateAcquisition():
             pass
 
     def __init__(self,func_list,output_list,rate_limit,stop_event=None,hw_lock=None,sv_lock=None,counter=None):
-        self.func_list   = list(func_list) if isinstance(func_list,(list,tuple,)) else [func_list]
-        self.output_list = list(output_list) if isinstance(output_list,(list,tuple,)) else [output_list]
+        if isinstance(func_list,(list,tuple,)):
+            self.func_list = list(func_list)
+        else:
+            raise ValueError('"func_list should be "list" or "tuple"')
+        if isinstance(output_list,(list,tuple,)):
+            self.output_list = list(output_list)
+        else:
+            raise ValueError('"output_list should be "list" or "tuple"')
         self.stop_event  = stop_event if stop_event else multiprocessing.Event()
         self.hw_lock     = hw_lock if hw_lock else multiprocessing.Lock() # hardware lock
         self.sv_lock     = sv_lock if sv_lock else multiprocessing.Lock() # share-value lock
         for i,output in enumerate(self.output_list):
-            if not(output):
+            if output is None:
                 self.output_list[i] = (self._nulloutput(),'null')
+            elif len(output) != 2:
+                raise ValueError('Invalid "output_list", sholde be "None" or "2-element List"')
+        print(self.output_list)
         self.time_limit  = 1.0/rate_limit
         
         self.counter     = counter
@@ -60,16 +70,14 @@ class constantRateAcquisition():
                     with self.hw_lock:
                         func_output = func()
                     with self.sv_lock:
-                        if isinstance(output,(multiprocessing.managers.BaseProxy,)):
+                        if isinstance(output,(multiprocessing.queues.Queue,)):
                             if attr:
                                 output.put({attr:func_output})
                             elif isinstance(func_output,(dict,)):
                                 for key,val in func_output.items():
-                                    try:
-                                        output.put({key:val},False)
-                                    except queue.Full:
-                                        # print('Queue is full. Value droped')
-                                        pass
+                                    if output.full():
+                                        output.get()
+                                    output.put({key:val},False)
                             else:
                                 raise ValueError('Invalid output_list: "func_output" should be dict if "attr" is None')
                         else:
