@@ -41,7 +41,7 @@ class motion_sensor():
         return {'x':rate.x,'y':rate.y,'z':rate.z}
     @property
     def magnetometer(self):
-        return {key:val for key,val in zip(('x','y','z','accuracy'),motion.get_magnetic_field())}
+        return {key:val for key,val in zip(('x','y','z','accu'),motion.get_magnetic_field())}
     @property
     def allsensor(self):
         output = {}
