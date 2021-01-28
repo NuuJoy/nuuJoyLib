@@ -2,8 +2,8 @@
 
 
 import socket
-from tcpipv4 import server_socket
-from utils import user_socket,getHostMACAddress
+from nuuJoyLib.nuuJoySocket.tcpipv4 import server_socket
+from nuuJoyLib.nuuJoySocket.utils import user_socket,getHostMACAddress
 
 
 __version__ = (2021,1,26,'beta')
