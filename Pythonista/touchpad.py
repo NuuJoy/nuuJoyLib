@@ -1,9 +1,6 @@
 
 
 import math
-import multiprocessing
-import collections
-
 import ui
 import scene
 
