@@ -9,7 +9,7 @@ import multiprocessing.managers
 from nuuJoyLib.Socket.utils import user_socket
 
 
-__version__ = (2021,1,28,'beta')
+__version__ = (2021,2,5,'beta')
 
 
 class server_socket(user_socket):
@@ -102,7 +102,8 @@ class client_socket(user_socket):
 
 
 class mySyncMngr(multiprocessing.managers.SyncManager,):
-    def __init__(self,address=None,authkey=b'default',startserver=False,queuename=('upstrm','dnstrm',),queuesize=(0,0,)):
+    def __init__(self,address=None,authkey=b'default',startserver=False,
+                 queuename=('upstrm','dnstrm',),queuesize=(0,0,),managerQueue=False):
         if not(address):
             port = 13999
             try:
@@ -121,7 +122,10 @@ class mySyncMngr(multiprocessing.managers.SyncManager,):
         # portal registeration
         self.server_queue = {}    
         for qname,qsize in zip(self.queuename,self.queuesize):
-            self.server_queue.update({qname:multiprocessing.Queue(maxsize=qsize),})
+            if managerQueue:
+                self.server_queue.update({qname:multiprocessing.Manager().Queue(maxsize=qsize),})
+            else:
+                self.server_queue.update({qname:multiprocessing.Queue(maxsize=qsize),})
         mySyncMngr.register(self.queuename[0], callable=lambda:self.server_queue[self.queuename[0]])
         mySyncMngr.register(self.queuename[1], callable=lambda:self.server_queue[self.queuename[1]])
         mySyncMngr.register(self.queuename[2], callable=lambda:self.server_queue[self.queuename[2]])
