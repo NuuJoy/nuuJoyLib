@@ -5,7 +5,7 @@ import ui
 import scene
 
 
-__version__ = (2021,2,4,'beta')
+__version__ = (2021,2,5,'beta')
 
 
 class touchGamePad(scene.Scene):
@@ -119,7 +119,7 @@ class touchGamePad(scene.Scene):
             self.touch   = touch
             self.clamp_x = self.ref_x + self.scaled_axes*(self.touch.location.x - self.ref_x)
             self.clamp_y = self.ref_y + self.scaled_axes*(self.touch.location.y - self.ref_y)
-            self.touchmoved_extfunc('touch_move',touch)
+            self.touchmoved_extfunc('touch_move',self.current_state)
         def scene_draw(self):
             if self.touch:
                 if (self.magnitude < 0.99*self.max_length):
