@@ -21,6 +21,9 @@ class gamepad_controller():
         jspad = gamepad_controller()
         jspad.keep_update(mode='process')
         state,lock,event = jspad.shareval,jspad.sharelock,jspad.stopevent
+    Note:
+        This class based from jdb's unlicense-code
+        https://gist.github.com/rdb/8864666
     '''
     @staticmethod
     def get_device_name(fn):
