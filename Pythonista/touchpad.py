@@ -145,10 +145,10 @@ class touchGamePad(scene.Scene):
             return 1.0 if (self.magnitude <= self.max_length) else (self.max_length/self.magnitude)
         @property
         def x(self):
-            return self.scaled_axes*(self.clamp_x-self.ref_x)/self.max_length if self.touch else 0.0
+            return (self.clamp_x-self.ref_x)/self.max_length if self.touch else 0.0
         @property
         def y(self):
-            return self.scaled_axes*(self.clamp_y-self.ref_y)/self.max_length  if self.touch else 0.0
+            return (self.clamp_y-self.ref_y)/self.max_length  if self.touch else 0.0
 
     class button():
         def __init__(self,name='default',
