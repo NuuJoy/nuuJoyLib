@@ -104,11 +104,19 @@ class user_socket(object):
         self._socket_protocol  = {'TCP':socket.SOCK_STREAM,'UDP':socket.SOCK_DGRAM}
         # connection info
         if not IPAddr:
-            hostname     = socket.gethostname()
             try:
-                self._IPAddr = socket.gethostbyname(hostname+'.local')
-            except:
-                self._IPAddr = socket.gethostbyname(hostname)
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                s.connect(('8.8.8.8', 80))
+                self._IPAddr = s.getsockname()[0]
+                s.close()
+            except Exception as err:
+                print('Exception: ',err)
+                hostname = socket.gethostname()
+                try:
+                    self._IPAddr = socket.gethostbyname(hostname+'.local')
+                except Exception as err:
+                    print('Exception: ',err)
+                    self._IPAddr = socket.gethostbyname(hostname)
         else:
             self._IPAddr = IPAddr
         self._port    = port
