@@ -9,7 +9,7 @@ import multiprocessing.managers
 from nuuJoyLib.Socket.utils import user_socket
 
 
-__version__ = (2021,2,5,'beta')
+__version__ = (2021,2,8,'beta')
 
 
 class server_socket(user_socket):

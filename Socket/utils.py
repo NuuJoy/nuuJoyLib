@@ -2,13 +2,14 @@
 
 
 import socket
+import select
 import subprocess
 import uuid
 # from cryptography.fernet import Fernet as fernet
 import hashlib
 
 
-__version__ = (2021,1,26,'beta')
+__version__ = (2021,2,9,'beta')
 
 
 def getHostMACAddress():
@@ -67,9 +68,10 @@ class msgcls(object):
         if not ((bgn_mrk < 0) or (end_mrk < 0) or (end_mrk <= bgn_mrk)):
             return super(msgcls,cls).__new__(cls,*args,**kwargs)
     def __init__(self,rawmsg,syntax,*args,**kwargs):
-        self.syntax = syntax
-        bgn_mrk,end_mrk = rawmsg.rfind(self.syntax['msgb']), rawmsg.rfind(self.syntax['msge'])
-        self._rfnmsg = rawmsg[bgn_mrk:(end_mrk+len(self.syntax['msge']))]
+        self._rawmsg = rawmsg
+        self.syntax  = syntax
+        bgn_mrk,end_mrk = self._rawmsg.rfind(self.syntax['msgb']), self._rawmsg.rfind(self.syntax['msge'])
+        self._rfnmsg = self._rawmsg[bgn_mrk:(end_mrk+len(self.syntax['msge']))]
     def __repr__(self):
         return str(self._rfnmsg)
     @property
@@ -103,7 +105,10 @@ class user_socket(object):
         # connection info
         if not IPAddr:
             hostname     = socket.gethostname()
-            self._IPAddr = socket.gethostbyname(hostname+'.local')
+            try:
+                self._IPAddr = socket.gethostbyname(hostname+'.local')
+            except:
+                self._IPAddr = socket.gethostbyname(hostname)
         else:
             self._IPAddr = IPAddr
         self._port    = port
@@ -117,7 +122,7 @@ class user_socket(object):
                        'keyb':keyb,'keye':keye}
         # read buffer
         self.databuff = []
-        self.dataresd = ''
+        self.dataresd = b''
         # encoder
         # self._ciphers  = ciphers()
         # self.encryptor = self._ciphers.encrypt
@@ -137,6 +142,16 @@ class user_socket(object):
     def __exit__(self,exc_type, exc_value, traceback):
         self._soc.close()
         print('socket port closed')
+    def conn_status(self):
+        try:
+            if self._soc.fileno() == -1:
+                return False
+            _, ready_to_write, _ = select.select([self._soc,], [self._soc,], [], 5)
+            return bool(ready_to_write)
+        except select.error:
+            self._soc.shutdown(2)
+            self._soc.close()
+            return False
     def send_rawb(self,data,conn=None):
         if not conn: conn = self._soc
         conn.sendall(data)
@@ -178,4 +193,15 @@ class user_socket(object):
             except socket.timeout:
                 datapart = None
         return msgcls(data,self.syntax)
+    def recv_msgsstrm(self,conn=None,timeout=1.0,buff=1024):
+        if conn is None: conn = self._soc
+        if timeout: conn.settimeout(timeout)
+        if not(self.databuff):
+            if not(self.syntax['msge'] in self.dataresd):
+                self.dataresd += conn.recv(buff)
+            while self.syntax['msge'] in self.dataresd:
+                index = (self.dataresd.find(self.syntax['msge'])+len(self.syntax['msge']))
+                self.databuff.append(msgcls(self.dataresd[:index],self.syntax))
+                self.dataresd = self.dataresd[index:]
+        return self.databuff.pop(0) if self.databuff else None
 
