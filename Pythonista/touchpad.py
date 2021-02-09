@@ -5,7 +5,7 @@ import ui
 import scene
 
 
-__version__ = (2021,2,5,'beta')
+__version__ = (2021,2,9,'beta')
 
 
 class touchGamePad(scene.Scene):
@@ -32,6 +32,7 @@ class touchGamePad(scene.Scene):
     '''
     class analog_rect():
         def __init__(self,name='default',
+                          label=None,
                           respond_area=(0.0,0.0,1.0,1.0),
                           max_length=0.25,
                           color={'normal':{'stroke':(1,1,1,1),
@@ -44,7 +45,8 @@ class touchGamePad(scene.Scene):
                           touchmoved_extfunc=lambda*args:None,
                           touchended_extfunc=lambda*args:None,):
             self.scrnWdth, self.scrnHght = ui.get_screen_size()
-            self.name         = name
+            self.name = name
+            self.label = name if label is None else label
             self.respond_area = {'x1':respond_area[0],
                                  'y1':respond_area[1],
                                  'x2':respond_area[2],
@@ -98,6 +100,7 @@ class touchGamePad(scene.Scene):
                 scene.rect(self.boundary['left'],self.boundary['lower'],2.0*self.max_length,2.0*self.max_length)
                 scene.line(self.clamp_x,self.boundary['upper'],self.clamp_x,self.boundary['lower'])
                 scene.line(self.boundary['left'],self.clamp_y,self.boundary['right'],self.clamp_y)
+                scene.text(self.label, x=self.ref_x, y=self.ref_y)
         @property
         def x(self):
             return min(max((self.clamp_x-self.ref_x)/self.max_length,-1.0),1.0) if self.touch else 0.0
@@ -132,6 +135,7 @@ class touchGamePad(scene.Scene):
                     scene.fill(*self.color['highlight']['fill'])
                 scene.ellipse(self.boundary['left'],self.boundary['lower'],2.0*self.max_length,2.0*self.max_length)
                 scene.line(self.ref_x,self.ref_y,self.clamp_x,self.clamp_y)
+                scene.text(self.label, x=self.ref_x, y=self.ref_y)
         @property
         def magnitude(self):
             return math.sqrt((self.touch.location.x-self.ref_x)**2+(self.touch.location.y-self.ref_y)**2)
@@ -147,6 +151,7 @@ class touchGamePad(scene.Scene):
 
     class button():
         def __init__(self,name='default',
+                          label=None,
                           respond_area=(0.4,0.25,0.6,0.75),
                           toggle=None,
                           color={'normal':{'stroke':(1,1,1,1),
@@ -160,7 +165,8 @@ class touchGamePad(scene.Scene):
                           toggle_on_extfunc=lambda*args:None,
                           toggle_off_extunc=lambda*args:None):
             self.scrnWdth, self.scrnHght = ui.get_screen_size()
-            self.name  = name
+            self.name = name
+            self.label = name if label is None else label
             self.touch = None
             self.respond_area = {'x1':respond_area[0],
                                  'y1':respond_area[1],
@@ -205,6 +211,8 @@ class touchGamePad(scene.Scene):
                        self.respond_area['y1']*self.scrnHght,
                        (self.respond_area['x2']-self.respond_area['x1'])*self.scrnWdth,
                        (self.respond_area['y2']-self.respond_area['y1'])*self.scrnHght)
+            scene.text(self.label, x=0.5*(self.respond_area['x1']+self.respond_area['x2'])*self.scrnWdth, 
+                                   y=0.5*(self.respond_area['y1']+self.respond_area['y2'])*self.scrnHght,)
         @property
         def current_state(self):
             return {'name':self.name,'type':self.__class__.__name__,'press':bool(self.touch),'toggle':self.toggle}
