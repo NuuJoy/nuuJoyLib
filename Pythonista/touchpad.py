@@ -72,10 +72,10 @@ class touchPadCore(scene.Scene):
             self.touchbegan_extfunc('touch_began',self.current_state)
         def touch_moved(self,touch):
             self.touch = touch
-            self.touchmoved_extfunc('touch_move',self.current_state)
+            self.touchmoved_extfunc('touch_moved',self.current_state)
         def touch_ended(self,touch):
-            self._clear_touch()
             self.touchended_extfunc('touch_ended',self.current_state)
+            self._clear_touch()
         def rescreen(self):
             if self.touch:
                 # get old self on-screen position
@@ -99,7 +99,7 @@ class touchPadCore(scene.Scene):
                 scene.stroke(*self.color['normal']['stroke'])
                 scene.fill(*self.color['normal']['fill'])
             scene.rect(self.respond_area['x1'],self.respond_area['y1'],self.respond_area['x2'],self.respond_area['y2'])
-            scene.text(self.label, x=self.ref_x, y=self.ref_y)
+            scene.text(self.label, x=self.respond_area['x1'], y=self.respond_area['y1'])
         @property
         def x(self):
             return self.touch.location.x - self.ref_x
@@ -137,7 +137,7 @@ class touchPadCore(scene.Scene):
             self.touch = touch
             self.clamp_x = max(min(self.touch.location.x,self.boundary['right']),self.boundary['left'])
             self.clamp_y = max(min(self.touch.location.y,self.boundary['upper']),self.boundary['lower'])
-            self.touchmoved_extfunc('touch_move',self.current_state)
+            self.touchmoved_extfunc('touch_moved',self.current_state)
         def rescreen(self):
             if self.touch:
                 # get old self on-screen position
@@ -182,7 +182,7 @@ class touchPadCore(scene.Scene):
             self.touch   = touch
             self.clamp_x = self.ref_x + self.scaled_axes*(self.touch.location.x - self.ref_x)
             self.clamp_y = self.ref_y + self.scaled_axes*(self.touch.location.y - self.ref_y)
-            self.touchmoved_extfunc('touch_move',self.current_state)
+            self.touchmoved_extfunc('touch_moved',self.current_state)
         def scene_draw(self):
             if self.touch:
                 if (self.magnitude < 0.99*self.max_length):
@@ -454,7 +454,7 @@ class MousePad(touchPadCore):
                                             'highlight':{'stroke':(0,1,0,1),'fill':(1,1,1,1),'weight':1.0}},
                                         touchbegan_extfunc=lambda*args:print(args),
                                         touchended_extfunc=lambda*args:print(args),),
-                            self.button(name='drag_bttn',label='Press',respond_area=(0.0,0.5,0.15,0.75),toggle=None,
+                            self.button(name='drag_bttn',label='Press',respond_area=(0.0,0.5,0.15,0.75),toggle=False,
                                         color={'normal':{'stroke':(0,1,1,0.5),'fill':(1,1,1,0.25),'weight':1.0},
                                             'highlight':{'stroke':(0,1,1,1),'fill':(1,1,1,1),'weight':1.0}},
                                         toggle_on_extfunc=lambda*args:print(args),
@@ -464,13 +464,12 @@ class MousePad(touchPadCore):
                                             'highlight':{'stroke':(0,1,0,1),'fill':(1,1,1,1),'weight':1.0}},
                                         touchbegan_extfunc=lambda*args:print(args),
                                         touchended_extfunc=lambda*args:print(args),),
-                            self.analog_rect(name='rectpad',
-                                            respond_area=(0.2,0.0,1.0,1.0),
-                                            max_length=0.4,
-                                            color={'normal':{'stroke':(0,0,0,0),'fill':(0,0,0,0),'weight':0},
-                                                'highlight':{'stroke':(0,0,0,0),'fill':(0,0,0,0),'weight':0}},
-                                            touchbegan_extfunc=lambda*args:print(args),
-                                            touchmoved_extfunc=lambda*args:print(args),
-                                            touchended_extfunc=lambda*args:print(args),)
+                            self.mousepad(name='rectpad',
+                                          respond_area=(0.2,0.0,1.0,1.0),
+                                          color={'normal':{'stroke':(0,0,0,0),'fill':(0,0,0,0),'weight':0},
+                                              'highlight':{'stroke':(0,0,0,0),'fill':(0,0,0,0),'weight':0}},
+                                          touchbegan_extfunc=lambda*args:print(args),
+                                          touchmoved_extfunc=lambda*args:print(args),
+                                          touchended_extfunc=lambda*args:print(args),)
                             ]
 
