@@ -5,11 +5,11 @@ import socket
 import select
 import subprocess
 import uuid
-# from cryptography.fernet import Fernet as fernet
 import hashlib
+# from cryptography.fernet import Fernet as fernet
 
 
-__version__ = (2021,2,9,'beta')
+__version__ = (2021,2,18,'beta')
 
 
 def getHostMACAddress():
@@ -63,11 +63,15 @@ class msgcls(object):
             bgn_mrk,end_mrk = data.rfind(bgn), data.rfind(end)
             if not ((bgn_mrk < 0) or (end_mrk < 0) or (end_mrk <= bgn_mrk)):
                 return data[(bgn_mrk+len(bgn)):end_mrk]
-    def __new__(cls,rawmsg,syntax,*args,**kwargs):
+    def __new__(cls,rawmsg,syntax={'msgb':b'|msgb|','msge':b'|msge|'},*args,**kwargs):
         bgn_mrk,end_mrk = rawmsg.rfind(syntax['msgb']), rawmsg.rfind(syntax['msge'])
         if not ((bgn_mrk < 0) or (end_mrk < 0) or (end_mrk <= bgn_mrk)):
             return super(msgcls,cls).__new__(cls,*args,**kwargs)
-    def __init__(self,rawmsg,syntax,*args,**kwargs):
+    def __init__(self,rawmsg,syntax={'msgb':b'|msgb|','msge':b'|msge|',
+                                     'dtab':b'|dtab|','dtae':b'|dtae|',
+                                     'infb':b'|infb|','infe':b'|infe|',
+                                     'hshb':b'|hshb|','hshe':b'|hshe|',
+                                     'keyb':b'|keyb|','keye':b'|keye|'},*args,**kwargs):
         self._rawmsg = rawmsg
         self.syntax  = syntax
         bgn_mrk,end_mrk = self._rawmsg.rfind(self.syntax['msgb']), self._rawmsg.rfind(self.syntax['msge'])
@@ -154,7 +158,7 @@ class user_socket(object):
         try:
             if self._soc.fileno() == -1:
                 return False
-            _, ready_to_write, _ = select.select([self._soc,], [self._soc,], [], 5)
+            ready_to_read, ready_to_write, in_error = select.select([self._soc,], [self._soc,], [], 5)
             return bool(ready_to_write)
         except select.error:
             self._soc.shutdown(2)
@@ -201,7 +205,7 @@ class user_socket(object):
             except socket.timeout:
                 datapart = None
         return msgcls(data,self.syntax)
-    def recv_msgsstrm(self,conn=None,timeout=1.0,buff=1024):
+    def recv_msgsstrm(self,conn=None,timeout=1.0,buff=1024,takelastonly=False):
         if conn is None: conn = self._soc
         if timeout: conn.settimeout(timeout)
         if not(self.databuff):
@@ -211,5 +215,38 @@ class user_socket(object):
                 index = (self.dataresd.find(self.syntax['msge'])+len(self.syntax['msge']))
                 self.databuff.append(msgcls(self.dataresd[:index],self.syntax))
                 self.dataresd = self.dataresd[index:]
-        return self.databuff.pop(0) if self.databuff else None
+        if takelastonly:
+            output = self.databuff[-1]
+            self.databuff = []
+            return output
+        else:
+            return self.databuff.pop(0) if self.databuff else None
+    def send_msgsszbsstrm(self,inputdata,conn=None):
+        if not conn: conn = self._soc
+        if not(isinstance(inputdata,(tuple,list,))): inputdata = (inputdata,)
+        for data in inputdata:
+            self.send_msgs(str(len(data)).encode(),datainfo=b'szbsstrm',conn=conn)
+            self.send_rawb(data,conn=conn)
+    def recv_msgsszbsstrm(self,conn=None,timeout=1.0,buff=1024,takelastonly=False):
+        if conn is None: conn = self._soc
+        if timeout: conn.settimeout(timeout)
+        if not(self.databuff):
+            if not(self.syntax['msge'] in self.dataresd):
+                self.dataresd += conn.recv(buff)
+            while self.syntax['msge'] in self.dataresd:
+                index = (self.dataresd.find(self.syntax['msge'])+len(self.syntax['msge']))
+                header = msgcls(self.dataresd[:index],self.syntax)
+                self.dataresd = self.dataresd[index:]
+                if (header.info == b'szbsstrm'):
+                    resbdata = int(header.data.decode())
+                    while len(self.dataresd) < resbdata:
+                        self.dataresd += conn.recv(buff)
+                self.databuff.append(self.dataresd[:resbdata])
+                self.dataresd = self.dataresd[resbdata:]
+        if takelastonly:
+            output = self.databuff[-1]
+            self.databuff = []
+            return output
+        else:
+            return self.databuff.pop(0) if self.databuff else None
 

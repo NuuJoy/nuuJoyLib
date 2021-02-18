@@ -9,7 +9,7 @@ import multiprocessing.managers
 from nuuJoyLib.Socket.utils import user_socket
 
 
-__version__ = (2021,2,8,'beta')
+__version__ = (2021,2,18,'beta')
 
 
 class server_socket(user_socket):
@@ -23,11 +23,11 @@ class server_socket(user_socket):
     Example:
         if __name__ == '__main__':
         with server_socket() as server:
-            server.start_echo_server()
+            server.start_echo_server(method='recv_msgsszbsstrm',silent=True)
     '''
     class client_conn(object):
         def __init__(self,conn):
-            self._conn = conn
+            self._soc = self._conn = conn
         def __enter__(self):
             return self._conn
         def __exit__(self,*args):
@@ -53,23 +53,35 @@ class server_socket(user_socket):
         return self
     def client_accept(self,timeout=None):
         print('waiting for client to connect ...')
-        self._con, addr = self._soc.accept() # blocks and waits for an incoming connection
-        if timeout: self._con.settimeout(timeout)
+        conn, addr = self._soc.accept() # blocks and waits for an incoming connection
+        if timeout: conn.settimeout(timeout)
         print('client connected Addr {}, port:{}'.format(*addr))
-        return self.client_conn(self._con)
-    def start_echo_server(self,timeout=1.0,delay=0.0,reverse=False):
+        return self.client_conn(conn)
+    def start_echo_server(self,method='recv_rawb',timeout=1.0,delay=0.0,reverse=False,silent=False):
         while True:
-            client_conn = self.client_accept()
-            with client_conn as conn:
+            connection = self.client_accept()
+            with connection as conn:
                 print('start echo server ...')
-                data = self.recv_rawb(conn=conn,timeout=timeout)
-                if data:
-                    print('server recieved {}'.format(data))
-                    if reverse: data = data[::-1]
-                    time.sleep(delay)
-                    self.send_rawb(data,conn=conn)
-                    print('server sent {}'.format(data))
-                    time.sleep(delay)
+                timeout_ref = time.time()
+                while time.time()-timeout_ref < timeout:
+                    try:
+                        data = getattr(self,method)(conn=conn,timeout=timeout)
+                        if data:
+                            print('server recieved {}'.format(data))
+                            timeout_ref = time.time()
+                            if not silent:
+                                if reverse:
+                                    data = data[::-1]
+                                time.sleep(delay)
+                                self.send_rawb(data,conn=conn)
+                                print('server sent {}'.format(data))
+                                time.sleep(delay)
+                    except socket.timeout:
+                        print('client timeout')
+                        break
+                    except BrokenPipeError:
+                        print('client connection fail')
+                        break
             print('client disconnect ...')
 
 
