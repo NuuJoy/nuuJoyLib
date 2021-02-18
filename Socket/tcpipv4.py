@@ -83,8 +83,24 @@ class server_socket(user_socket):
                         print('client connection fail')
                         break
             print('client disconnect ...')
-
-
+    def start_datarate_server(self,method='recv_rawb',timeout=1.0):
+        while True:
+            connection = self.client_accept()
+            with connection as conn:
+                print('start datarate server ...')
+                time_log    = []
+                timeout_ref = time.time()
+                while time.time()-timeout_ref < timeout:
+                    try:
+                        data = getattr(self,method)(conn=conn,timeout=timeout)
+                        if data:
+                            time_log.append(time.time())
+                    except:
+                        print('some exception ignored')
+                time_diff = tuple(t1-t0 for t1,t0 in zip(time_log[1:],time_log[:-1]))
+                print('receiving data rate is {:0.2f} Hz'.format(1/(sum(time_diff)/len(time_diff))))
+                
+                            
 class client_socket(user_socket):
     '''
     Client socket wrapper
