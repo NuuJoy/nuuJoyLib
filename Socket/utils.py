@@ -245,7 +245,7 @@ class user_socket(object):
                         readdata = conn.recv(buff)
                         if readdata:
                             timeout_ref = time.time()
-                            self.dataresd += conn.recv(buff)
+                            self.dataresd += readdata
                 self.databuff.append(self.dataresd[:resbdata])
                 self.dataresd = self.dataresd[resbdata:]
         if takelastonly:
