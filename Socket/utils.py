@@ -1,6 +1,7 @@
 #!/usr/bin/python3
 
 
+import time
 import socket
 import select
 import subprocess
@@ -9,7 +10,7 @@ import hashlib
 # from cryptography.fernet import Fernet as fernet
 
 
-__version__ = (2021,2,18,'beta')
+__version__ = (2021,2,19,'beta')
 
 
 def getHostMACAddress():
@@ -239,8 +240,12 @@ class user_socket(object):
                 self.dataresd = self.dataresd[index:]
                 if (header.info == b'szbsstrm'):
                     resbdata = int(header.data.decode())
-                    while len(self.dataresd) < resbdata:
-                        self.dataresd += conn.recv(buff)
+                    timeout_ref = time.time()
+                    while (len(self.dataresd) < resbdata) and (time.time()-timeout_ref < timeout):
+                        readdata = conn.recv(buff)
+                        if readdata:
+                            timeout_ref = time.time()
+                            self.dataresd += conn.recv(buff)
                 self.databuff.append(self.dataresd[:resbdata])
                 self.dataresd = self.dataresd[resbdata:]
         if takelastonly:
