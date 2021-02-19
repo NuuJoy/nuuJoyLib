@@ -9,7 +9,7 @@ import multiprocessing.managers
 from nuuJoyLib.Socket.utils import user_socket
 
 
-__version__ = (2021,2,18,'beta')
+__version__ = (2021,2,19,'beta')
 
 
 class server_socket(user_socket):
@@ -88,18 +88,21 @@ class server_socket(user_socket):
             connection = self.client_accept()
             with connection as conn:
                 print('start datarate server ...')
-                time_log    = []
+                timer   = None
+                counter = 0
                 timeout_ref = time.time()
                 while time.time()-timeout_ref < timeout:
                     try:
                         data = getattr(self,method)(conn=conn,timeout=timeout)
                         if data:
-                            time_log.append(time.time())
+                            if not timer:
+                                timer = time.time()
+                            counter += 1
+                            timeout_ref = time.time()
                     except:
                         print('some exception ignored')
-                time_diff = tuple(t1-t0 for t1,t0 in zip(time_log[1:],time_log[:-1]))
-                print('receiving data rate is {:0.2f} Hz'.format(1/(sum(time_diff)/len(time_diff))))
-                
+                rate_hz = counter/(time.time()-timer)
+                print('data receiving rate: {:0.2f} Hz ({} data)'.format(rate_hz,counter))
                             
 class client_socket(user_socket):
     '''
