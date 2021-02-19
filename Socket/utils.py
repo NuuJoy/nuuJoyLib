@@ -242,7 +242,7 @@ class user_socket(object):
                     resbdata = int(header.data.decode())
                     timeout_ref = time.time()
                     while (len(self.dataresd) < resbdata) and (time.time()-timeout_ref < timeout):
-                        readdata = conn.recv(buff)
+                        readdata = conn.recv(min(buff,resbdata-len(self.dataresd)))
                         if readdata:
                             timeout_ref = time.time()
                             self.dataresd += readdata
