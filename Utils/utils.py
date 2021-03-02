@@ -8,11 +8,14 @@ import random
 import string
 import statistics
 import collections
-import tkinter
-import tkinter.filedialog
+try: # tkinter import exception for using in Pythonista
+    import tkinter
+    import tkinter.filedialog
+except ModuleNotFoundError:
+    print('Fail importing tkinter')
 
 
-__version__ = (2021,1,26,'beta')
+__version__ = (2021,3,2,'beta')
 
 
 class logFileGen(object):
@@ -94,7 +97,10 @@ class statlist(list):
         return statistics.median(self) if len(self) >= 1 else None
     @property
     def mode(self):
-        return statistics.mode(self) if len(self) >= 1 else None
+        try:
+            return statistics.mode(self) if len(self) >= 1 else None
+        except statistics.StatisticsError:
+            return None
     @property
     def stdev(self):
         return statistics.stdev(self) if len(self) >= 2 else None
@@ -120,8 +126,7 @@ class statlist(list):
                'mode    : {}\n'.format(self.mode)+\
                'stdev   : {}\n'.format(self.stdev)+\
                'variance: {}\n'.format(self.variance)+\
-               'cov     : {}\n'.format(self.cov)+\
-               'member  : {}'.format(self.member)
+               'cov     : {}\n'.format(self.cov)
     def __pos__(self):
         return statlist([eachSelf for eachSelf in self])
     def __neg__(self):
@@ -169,6 +174,8 @@ class statlist(list):
         for i,eachVal in enumerate(newVal):
             self[i] = eachVal
         return True
+    def __getitem__(self,key):
+        return statlist(super(statlist,self).__getitem__(key))
 
 
 class saveOpen(object):
@@ -192,6 +199,45 @@ class saveOpen(object):
         return self._filehandle
     def __exit__(self ,type, value, traceback):
         self._filehandle.close()
+
+
+class stopWatch():
+    '''
+    minimal stop watch
+        Purpose:
+            loop time logging
+        Example:
+            mylog = stopWatch()
+            mylog.start() # optional
+            for _ in range(10):
+                <<< Do something here >>>
+                mylog.lap()
+            print(mylog.fps)
+    '''
+    def __init__(self,buffer=0):
+        self.buffer   = buffer
+        self._timeref = None
+        self._timelog = statlist()
+    def start(self):
+        self._timeref = time.time()
+    def lap(self):
+        if not self._timeref:
+            self.start()
+        else:
+            self._timelog.append(time.time())
+            if self.buffer:
+                self._timelog = self._timelog[(-self.buffer):]
+    @property
+    def time_raw(self):
+        return self._timelog - self._timeref
+    @property
+    def time_inc(self):
+        return self.time_raw[1:] - self.time_raw[:-1]
+    @property
+    def fps(self):
+        return statlist([1.0/(inc) for inc in self.time_inc])
+    def __repr__(self):
+        return 
 
 
 def randomText(length=8):
