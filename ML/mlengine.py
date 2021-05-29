@@ -16,11 +16,14 @@ class _nodes_layer():
         for attr in ('_intermbuff',
                      '_outputbuff',
                      '_dcostdintermbuff',
-                     '_dcostdoutputbuff',
                      '_dcostdweightbuff',
                      '_dcostdbiasbuff'):
             if hasattr(self,attr):
                 setattr(self, attr, None)
+        for attr in ('_cost',
+                     '_dcostdoutputbuff',):
+            if hasattr(self,attr):
+                setattr(self, attr, [])
 
     def nodes_chain_call(self,funcname,targetchain='selfonly'):
         if not(targetchain in ('selfonly','upstream','dnstream','linked')):
@@ -75,7 +78,7 @@ def actvfunc_lrelu(input):
 def actvfunc_deriv_lrelu(input):
     return numpy.where(input<0,0.01,1)
 def actvfunc_sigmoid(input):
-    return 1.0/(1.0+numpy.exp(-input))
+    return 1.0/(1.0+numpy.exp(-numpy.clip(input,-500,500))) # clip to avoid overflow
 def actvfunc_deriv_sigmoid(input):
     return actvfunc_sigmoid(input)*(1.0-actvfunc_sigmoid(input))
 
@@ -104,6 +107,9 @@ class neuron_layer(_nodes_layer):
                                      'deriv':actvfunc_deriv_sigmoid},}
         self._actvtype = actvfunc
         self.learnrate = learnrate
+        self.optim_moment = {'beta':0.9,'mtn1_w':0,'mtn1_b':0,'cnt':1}
+        self.optim_rmsp = {'beta':0.99,'eps':1e-8,'vtn1_w':0,'vtn1_b':0,'cnt':1}
+        self.optim_adam = {'beta1':0.9,'beta2':0.999,'eps':1e-8,'mtn1_w':0,'mtn1_b':0,'vtn1_w':0,'vtn1_b':0,'cnt':1}
         self.clear_dropout() # set dropprob to zero
 
     @property   
@@ -140,8 +146,8 @@ class neuron_layer(_nodes_layer):
         return self._dcostdintermbuff
 
     def init_weightbiasmatrix(self):
-        self._weight = numpy.random.randn(self.nodenums,self._parent.nodenums)
-        self._bias = numpy.random.randn(self.nodenums,1)
+        self._weight = 2.0/numpy.sqrt(self._parent.nodenums)*(0.5-numpy.random.random(self.nodenums,self._parent.nodenums))
+        self._bias = 2.0/numpy.sqrt(self._parent.nodenums)*(0.5-numpy.random.random(self.nodenums,1))
 
     def forward_propagation(self,array=None):
         if array is None:
@@ -159,7 +165,7 @@ class neuron_layer(_nodes_layer):
         # [dcost_dbias(i)] = [dinterm(i)_dbias(i)]*[doutput(i)_dinterm(i)]*[dcost_doutput(i)]
         # get dcostdinterm from child or calculate from cost_layer feedback
         if isinstance(self._child,(cost_layer,)):
-            doutputdinterm = self.actvfunc(self.interm,mode='deriv')
+            doutputdinterm = self.actvfunc(self.output,mode='deriv')
             dcostdoutput = self._child.dcostdoutput # leveraged dcost-by-doutput from cost_layer-child
             self._dcostdintermbuff = doutputdinterm*dcostdoutput # apply chain rule and keep this value for parent's backpropagation
         else:
@@ -195,79 +201,81 @@ class neuron_layer(_nodes_layer):
             self._weight = self._weight - self.learnrate*dwt_sgd
             self._bias = self._bias - self.learnrate*dbt_sgd
         elif optim == 'momentum':
-            if not hasattr(self,'optim_moment'):
-                self.optim_moment = {'beta':0.9,'mtn1_w':0,'mtn1_b':0,'cnt':1}
-            beta = min(self.optim_moment['beta'],1.0-(1.0/self.optim_moment['cnt']))
-            mtn1_w = self.optim_moment['mtn1_w']
-            mtn1_b = self.optim_moment['mtn1_b']
+            beta = self.optim_moment['beta']
+            mtn1_w = numpy.array(self.optim_moment['mtn1_w'])
+            mtn1_b = numpy.array(self.optim_moment['mtn1_b'])
             dwt_moment = beta*mtn1_w + (1-beta)*numpy.nanmean(self._batchdcostbuff['_dcostdweightbuff'],axis=0)
             dbt_moment = beta*mtn1_b + (1-beta)*numpy.nanmean(self._batchdcostbuff['_dcostdbiasbuff'],axis=0)
-            self.optim_moment['mtn1_w'] = dwt_moment
-            self.optim_moment['mtn1_b'] = dbt_moment
+            self.optim_moment['mtn1_w'] = dwt_moment.tolist()
+            self.optim_moment['mtn1_b'] = dbt_moment.tolist()
             self.optim_moment['cnt'] += 1
             # adjust weight and bias from dwt and dbt from optim method
             self._weight = self._weight - self.learnrate*dwt_moment
             self._bias = self._bias - self.learnrate*dbt_moment
         elif optim == 'rmsprop':
-            if not hasattr(self,'rmsprop'):
-                self.optim_rmsp = {'beta':0.99,'eps':1e-8,'vtn1_w':0,'vtn1_b':0,'cnt':1}
-            beta = min(self.optim_rmsp['beta'],1.0-(1.0/self.optim_rmsp['cnt']))
+            beta = self.optim_rmsp['beta']
             eps = self.optim_rmsp['eps']
-            vtn1_w = self.optim_rmsp['vtn1_w']
-            vtn1_b = self.optim_rmsp['vtn1_b']
-            dwt_array = []
-            dbt_array = []
+            vtn1_w = numpy.array(self.optim_rmsp['vtn1_w'])
+            vtn1_b = numpy.array(self.optim_rmsp['vtn1_b'])
             vt_w_array = []
             vt_b_array = []
+            dwt_array = []
+            dbt_array = []
             for dcostdw, dcostdb in zip(self._batchdcostbuff['_dcostdweightbuff'],self._batchdcostbuff['_dcostdbiasbuff']):
-                vt_w = beta*vtn1_w + (1-beta)*dcostdw**2
-                vt_w_array.append( vt_w )
-                dwt_array.append( (1.0/numpy.sqrt(vt_w+eps))*dcostdw )
-                vt_b = beta*vtn1_b + (1-beta)*dcostdb**2
-                vt_b_array.append( vt_b )
-                dbt_array.append( (1.0/numpy.sqrt(vt_b+eps))*dcostdb )
-            self.optim_rmsp['vtn1_w'] = numpy.nanmean(vt_w_array,axis=0)
-            self.optim_rmsp['vtn1_b'] = numpy.nanmean(vt_b_array,axis=0)
+                vt_w_ele = (beta*vtn1_w + (1-beta)*dcostdw**2)
+                vt_b_ele = (beta*vtn1_b + (1-beta)*dcostdb**2)
+                dwt_ele = ((1.0/(numpy.sqrt(vt_w_ele)+eps))*dcostdw)
+                dbt_ele = ((1.0/(numpy.sqrt(vt_b_ele)+eps))*dcostdb)
+                vt_w_array.append(vt_w_ele)
+                vt_b_array.append(vt_b_ele)
+                dwt_array.append(dwt_ele)
+                dbt_array.append(dbt_ele)
             dwt_rsmp = numpy.nanmean(dwt_array,axis=0)
             dbt_rsmp = numpy.nanmean(dbt_array,axis=0)
+            self.optim_rmsp['vtn1_w'] = numpy.nanmean(vt_w_array,axis=0).tolist()
+            self.optim_rmsp['vtn1_b'] = numpy.nanmean(vt_b_array,axis=0).tolist()
+            self.optim_rmsp['cnt'] += 1
             # adjust weight and bias from dwt and dbt from optim method
             self._weight = self._weight - self.learnrate*dwt_rsmp
             self._bias = self._bias - self.learnrate*dbt_rsmp
-        else: # adam (momentum and rmsprop combined)
-            if not hasattr(self,'rmsprop'):
-                self.optim_adam = {'beta1':0.9,'mtn1_w':0,'mtn1_b':0,'cnt':1,'beta2':0.99,'eps':1e-8,'vtn1_w':0,'vtn1_b':0,'cnt':1}
-            # calculate rmsprop part
-            beta1 = min(self.optim_adam['beta1'],1.0-(1.0/self.optim_adam['cnt']))
-            beta2 = min(self.optim_adam['beta2'],1.0-(1.0/self.optim_adam['cnt']))
+        elif optim == 'adam':
+            beta1 = self.optim_adam['beta1']
+            beta2 = self.optim_adam['beta2']
+            mt_corr = 1 - beta1**self.optim_adam['cnt']
+            vt_corr = 1 - beta2**self.optim_adam['cnt']
             eps = self.optim_adam['eps']
-            vtn1_w = self.optim_adam['vtn1_w']
-            vtn1_b = self.optim_adam['vtn1_b']
-            mtn1_w = self.optim_adam['mtn1_w']
-            mtn1_b = self.optim_adam['mtn1_b']
-            dwt_array = []
-            dbt_array = []
+            vtn1_w = numpy.array(self.optim_adam['vtn1_w'])
+            vtn1_b = numpy.array(self.optim_adam['vtn1_b'])
             vt_w_array = []
             vt_b_array = []
+            mt_w_array = []
+            mt_b_array = []
             for dcostdw, dcostdb in zip(self._batchdcostbuff['_dcostdweightbuff'],self._batchdcostbuff['_dcostdbiasbuff']):
-                vt_w = beta2*vtn1_w + (1-beta2)*dcostdw**2
-                vt_w_array.append( vt_w )
-                dwt_array.append( (1.0/numpy.sqrt(vt_w+eps))*dcostdw )
-                vt_b = beta2*vtn1_b + (1-beta2)*dcostdb**2
-                vt_b_array.append( vt_b )
-                dbt_array.append( (1.0/numpy.sqrt(vt_b+eps))*dcostdb )
-            dwt_rsmp = numpy.nanmean(dwt_array,axis=0)
-            dbt_rsmp = numpy.nanmean(dbt_array,axis=0)
-            # calculate momentum part
-            dwt_adam = beta1*mtn1_w + (1-beta1)*dwt_rsmp
-            dbt_adam = beta1*mtn1_b + (1-beta1)*dbt_rsmp
-            # update momentum
-            self.optim_adam['vtn1_w'] = numpy.nanmean(vt_w_array,axis=0)
-            self.optim_adam['vtn1_b'] = numpy.nanmean(vt_b_array,axis=0)
-            self.optim_adam['mtn1_w'] = dwt_adam
-            self.optim_adam['mtn1_b'] = dbt_adam
+                # calculate 2nd moment
+                vt_w_ele = (beta2*vtn1_w + (1-beta2)*dcostdw**2)
+                vt_b_ele = (beta2*vtn1_b + (1-beta2)*dcostdb**2)
+                mt_w_ele = ((1.0/(numpy.sqrt(vt_w_ele)/vt_corr+eps))*dcostdw)
+                mt_b_ele = ((1.0/(numpy.sqrt(vt_b_ele)/vt_corr+eps))*dcostdb)
+                vt_w_array.append(vt_w_ele) 
+                vt_b_array.append(vt_b_ele)
+                mt_w_array.append(mt_w_ele)
+                mt_b_array.append(mt_b_ele)
+            # calculate 1st moment
+            mt_w = numpy.nanmean(mt_w_array,axis=0)
+            mt_b = numpy.nanmean(mt_b_array,axis=0)
+            mtn1_w = numpy.array(self.optim_adam['mtn1_w'])
+            mtn1_b = numpy.array(self.optim_adam['mtn1_b'])
+            dwt_adam = beta1*mtn1_w + (1-beta1)*mt_w
+            dbt_adam = beta1*mtn1_b + (1-beta1)*mt_b
+            # update optim memory
+            self.optim_adam['vtn1_w'] = numpy.nanmean(vt_w_array,axis=0).tolist()
+            self.optim_adam['vtn1_b'] = numpy.nanmean(vt_b_array,axis=0).tolist()
+            self.optim_adam['mtn1_w'] = dwt_adam.tolist()
+            self.optim_adam['mtn1_b'] = dbt_adam.tolist()
+            self.optim_adam['cnt'] += 1
             # adjust weight and bias from dwt and dbt from optim method
-            self._weight = self._weight - self.learnrate*dwt_adam
-            self._bias = self._bias - self.learnrate*dbt_adam
+            self._weight = self._weight - (self.learnrate/mt_corr)*dwt_adam
+            self._bias = self._bias - (self.learnrate/mt_corr)*dbt_adam
 
     def set_dropout(self,dropprob):
         self._drptmtrx = numpy.where(numpy.random.random((self.nodenums,1))>dropprob,1,numpy.nan)
@@ -278,9 +286,9 @@ class neuron_layer(_nodes_layer):
 
 # define cost function
 def lossfunc_cross_entropy(y_predict,y_target,epsilon=1e-15):
-    return numpy.nan_to_num(-(y_target*numpy.log(y_predict+epsilon)+(1-y_target)*numpy.log(1-y_predict+epsilon)))
+    return numpy.nan_to_num(-(y_target*numpy.log(numpy.clip(y_predict,epsilon,1))+(1-y_target)*numpy.log(numpy.clip(1-y_predict,epsilon,1))))
 def lossfunc_cross_entropy_deriv(y_predict,y_target,epsilon=1e-15):
-    return numpy.nan_to_num((-((y_target+epsilon)/(y_predict+epsilon))+((1-y_target+epsilon)/(1-y_predict+epsilon)))/len(y_target))
+    return numpy.nan_to_num( -1.0*(y_target)/numpy.clip(y_predict,epsilon,1) + (1-y_target)/numpy.clip(1-y_predict,epsilon,1) )
 def lossfunc_square_error(y_predict,y_target):
     return numpy.nan_to_num((y_predict-y_target)**2)
 def lossfunc_square_error_deriv(y_predict,y_target):
@@ -293,8 +301,8 @@ class cost_layer(_nodes_layer):
 
     def __init__(self,costfunc,layername=None):
         super().__init__(layername)
-        self._cost = None
-        self._dcostdoutputbuff = None
+        self._cost = []
+        self._dcostdoutputbuff = []
         self._costfunc = {'square_error':{'norm':lossfunc_square_error,
                                          'deriv':lossfunc_square_error_deriv},
                          'cross_entropy':{'norm':lossfunc_cross_entropy,
@@ -303,21 +311,25 @@ class cost_layer(_nodes_layer):
 
     def calculate_cost(self,y_target):
         y_target = numpy.array(y_target)
-        self._cost = self.costfunc(self._parent.output, y_target,mode='norm')
-        self._dcostdoutputbuff = numpy.array(self.costfunc(self._parent.output, y_target,mode='deriv'))
+        self._cost.append(self.costfunc(self._parent.output, y_target,mode='norm'))
+        self._dcostdoutputbuff.append(numpy.array(self.costfunc(self._parent.output, y_target,mode='deriv')))
         return self.cost
+
+    def reset_batchdcostbuff(self):
+        self._cost = []
+        self._dcostdoutputbuff = []
 
     @property
     def cost(self):
-        if self._cost is None:
+        if not self._cost:
             raise AttributeError('cost not be calculated, should call self.calculate_cost with passing target')
-        return self._cost
+        return numpy.mean(self._cost,axis=0)
 
     @property
     def dcostdoutput(self):
-        if self._dcostdoutputbuff is None:
+        if not self._dcostdoutputbuff:
             raise AttributeError('cost not be calculated, should call self.calculate_cost with passing target')
-        return self._dcostdoutputbuff
+        return numpy.mean(self._dcostdoutputbuff,axis=0)
 
 
 class neural_network_model():
@@ -347,17 +359,18 @@ class neural_network_model():
             if isinstance(layer, (neuron_layer,)): 
                 layer.init_weightbiasmatrix() # init weight and bias in neuron layer
 
-    def reset_buffer(self):
+    def reset_buffer(self,keepcost=False):
         for layer in self.layers:
-            layer.reset_buffer()
+            if not(isinstance(layer,(cost_layer,)) and keepcost):
+                layer.reset_buffer()
         # optional: use nodes-chain method,
         # self._layers[0].nodes_chain_call('reset_buffer',targetchain='linked') 
 
     def set_input(self,array):
         self.layers[0].output = array
 
-    def predict(self,userinput):
-        self.reset_buffer()
+    def predict(self,userinput,keepcost=False):
+        self.reset_buffer(keepcost)
         # return output from lastest-neuron-layer
         self.layers[0].output = userinput
         for layer in reversed(self.layers):
@@ -396,6 +409,9 @@ class neural_network_model():
             if isinstance(layer, (neuron_layer,)):
                 layer.update_batchhyperparams(optim=optim)
                 layer.reset_batchdcostbuff()
+        for layer in self.layers:
+            if isinstance(layer, (cost_layer,)):
+                layer.reset_batchdcostbuff()
 
     def get_model_info(self):
         print('-------- get_model_info')
@@ -424,7 +440,7 @@ class neural_network_model():
                 weightbaislist.append([b[0] for b in numpy.ndarray.tolist(layer._bias)])
         return weightbaislist
 
-    def pack_model_info(self):
+    def pack_layers_state(self):
         model_info = []
         for i,layer in enumerate(self.layers):
             layernum = i
@@ -435,6 +451,9 @@ class neural_network_model():
             costtype = layer._costtype if hasattr(layer,'_costtype') else None
             weight = numpy.ndarray.tolist(layer._weight) if hasattr(layer,'_weight') else None
             bias = numpy.ndarray.tolist(layer._bias) if hasattr(layer,'_bias') else None
+            optim_moment = layer.optim_moment if hasattr(layer,'optim_moment') else None
+            optim_rmsp = layer.optim_rmsp if hasattr(layer,'optim_rmsp') else None
+            optim_adam = layer.optim_adam if hasattr(layer,'optim_adam') else None
             model_info.append({'layernum':layernum,
                                'layername':layername,
                                'classname':classname,
@@ -442,15 +461,21 @@ class neural_network_model():
                                'actvtype':actvtype,
                                'costtype':costtype,
                                'weight':weight,
-                               'bias':bias})
+                               'bias':bias,
+                               'optim_moment':optim_moment,
+                               'optim_rmsp':optim_rmsp,
+                               'optim_adam':optim_adam},)
         return model_info
 
-    def load_model_weight_bias(self,modelinfo):
+    def load_layers_state(self,modelinfo):
         for info in modelinfo:
-            if info['weight'] and info['bias']:
+            if info['classname'] == 'neuron_layer':
                 layer = self.layers[info['layernum']]
                 layer._weight = numpy.array(info['weight'])
                 layer._bias = numpy.array(info['bias'])
+                layer.optim_moment = info['optim_moment']
+                layer.optim_rmsp = info['optim_rmsp']
+                layer.optim_adam = info['optim_adam']
 
 
 # credits and refs
