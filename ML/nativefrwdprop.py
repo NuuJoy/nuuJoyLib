@@ -37,7 +37,8 @@ class frwdpropsqnc(object):
             with open(target,'r') as file:
                 target = json.loads(file.read()) # read file and loads with json, list of weightbias are expected
         for layer,w,b in zip(self.layerseq,target[::2],target[1::2]): # iterate [w1,b1,w2,b2,...,wx,bx] from target list
-            layer.weight, layer.bias = w, b # assign new weight and bias to each layer
+            layer.weight = w # assign new weight and bias to each layer
+            layer.bias = [bb if isinstance(bb,(float,int,)) else bb[0] for bb in b]
 
 
 class envstate(object):
@@ -79,6 +80,4 @@ class envstate(object):
                     discovered += 1 # score if in-range point found
                     break # grab only 1 point then break to next req
         return discovered>=len(self._reqpoint) # check if current state is satisfied req
-
-
 
