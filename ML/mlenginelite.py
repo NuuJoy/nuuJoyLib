@@ -1,8 +1,8 @@
 
 
 import numpy
-
 numpy.seterr(all='raise')
+
 
 def actvfunc_relu(inputarray):
     return inputarray*(inputarray>0)
@@ -18,11 +18,6 @@ def lossfunc_bce(pred,trgt,eps=1e-16):
     return -(trgt*numpy.log(numpy.clip(pred,eps,1))+(1-trgt)*numpy.log(numpy.clip(1.0-pred,eps,1)))
 def lossfunc_bce_diff(pred,trgt,eps=1e-2):
     return -1.0*numpy.clip(trgt,eps,1)/numpy.clip(pred,eps,1) + numpy.clip(1.0-trgt,eps,1)/numpy.clip(1.0-pred,eps,1)
-
-def lossfunc_sqerr(pred,trgt):
-    return (pred-trgt)**2.0
-def lossfunc_sqerr_diff(pred,trgt):
-    return 2.0*(pred-trgt)
 
 
 class relu2sigm2bcel(object):
@@ -135,32 +130,6 @@ class gradient(object):
         return params-self.learnrate*mt
 
 
-class momentum(gradient):
-    def __init__(self,learn_rate=0.1,decay_step=128,decay_rate=0.9,beta1=0.9):
-        super().__init__(learn_rate=learn_rate, decay_step=decay_step, decay_rate=decay_rate)
-        self.beta1 = beta1
-        self.mtn1 = 0.0
-    def update_params(self,params,dcostdpara):
-        self.iter_count += 1
-        mt = self.beta1*self.mtn1 + dcostdpara
-        self.mtn1 = numpy.mean(mt,axis=0)
-        return params-self.learnrate*self.mtn1
-
-
-class rmsprop(gradient):
-    def __init__(self,learn_rate=0.1,decay_step=128,decay_rate=0.9,beta2=0.99):
-        super().__init__(learn_rate=learn_rate, decay_step=decay_step, decay_rate=decay_rate)
-        self.beta2 = beta2
-        self.eps = 1e-16
-        self.vtn1 = 0.0
-    def update_params(self,params,dcostdpara):
-        self.iter_count += 1
-        vt = self.beta2*self.vtn1 + (1-self.beta2)*dcostdpara**2
-        mt = (1.0/(numpy.sqrt(vt)+self.eps))*dcostdpara
-        self.vtn1 = numpy.mean(vt,axis=0)
-        return params-self.learnrate*numpy.mean(mt,axis=0)
-
-
 class adam(gradient):
     def __init__(self,learn_rate=0.1,decay_step=128,decay_rate=0.9,beta1=0.9,beta2=0.999):
         super().__init__(learn_rate=learn_rate, decay_step=decay_step, decay_rate=decay_rate)
@@ -181,6 +150,7 @@ class adam(gradient):
         grad = numpy.nan_to_num(self.learnrate*(self.mtn1/mt_corr)*(1.0/(numpy.sqrt(self.vtn1/vt_corr) + self.eps)))
         numpy.seterr(all='raise')
         return params - grad
+
 
 if __name__ == '__main__':
     pass

@@ -48,7 +48,7 @@ class input_layer(_nodes_layer):
     @output.setter
     def output(self,inptarry):
         if (inptarry.shape[1] != self.nodenums) or (inptarry.shape[2] != 1):
-            raise ValueError('invalid input, expect numpy-array shape ({},1)'.format(self.nodenums))
+            raise ValueError('invalid input, expect numpy-array shape (n,{},1) , but got {}'.format(self.nodenums,inptarry.shape))
         else:
             self.nodes_chain_call('clear_buffer',{'buffnamelist':('_outputbuff',)},targetchain='dnstream')
             self._outputbuff = inptarry
@@ -57,12 +57,13 @@ class input_layer(_nodes_layer):
         self_state = {'layer_type':self.__class__.__name__,
                         'layer_id':self.id,
                            'child':self._child.id if self._child else None,
-                          'parent':self._parent.id if self._child else None,
-                          'params':{'nodenums':self.nodenums,
-                                    '_outputbuff':self._outputbuff,},
+                          'parent':self._parent.id if self._parent else None,
+                          'nodenums':self.nodenums,
+                          'params':{'_outputbuff':self._outputbuff.tolist(),},
                      }
         return self_state
-
+    def restore_state(self,state):
+        pass
 
 # define activation function
 def actvfunc_none(inptarry,diff=False):
@@ -85,11 +86,12 @@ class neuron_layer(_nodes_layer):
     def __init__(self,nodenums,actvfunc='relu'):
         super().__init__()
         self.nodenums = nodenums
-        if actvfunc == 'relu':
+        self.actvfunc = actvfunc
+        if self.actvfunc == 'relu':
             self._actvfunc = actvfunc_relu
-        elif actvfunc == 'lrelu':
+        elif self.actvfunc == 'lrelu':
             self._actvfunc = actvfunc_lrelu
-        elif actvfunc == 'sigmoid':
+        elif self.actvfunc == 'sigmoid':
             self._actvfunc = actvfunc_sigmoid
         else:
             raise ValueError('only support \'relu\' or \'sigmoid\' as activation function')
@@ -164,15 +166,15 @@ class neuron_layer(_nodes_layer):
                         'layer_id':self.id,
                            'child':self._child.id if self._child else None,
                           'parent':self._parent.id if self._child else None,
-                        'actvfunc':self._actvfunc.__func__.__name__,
+                        'actvfunc':self.actvfunc,
+                        'nodenums':self.nodenums,
                           'params':{
-                                    'nodenums':self.nodenums,
-                                    '_outputbuff':self._outputbuff,
-                                    '_weight':self._weight,
-                                    '_bias':self._bias,
-                                    '_dcstdintbuff':self._dcstdintbuff,
-                                    '_dcstdwghbuff':self._dcstdwghbuff,
-                                    '_dcstdbiabuff':self._dcstdbiabuff,
+                                    '_outputbuff':self._outputbuff.tolist(),
+                                    '_weight':self._weight.tolist(),
+                                    '_bias':self._bias.tolist(),
+                                    '_dcstdintbuff':self._dcstdintbuff.tolist(),
+                                    '_dcstdwghbuff':self._dcstdwghbuff.tolist(),
+                                    '_dcstdbiabuff':self._dcstdbiabuff.tolist(),
                                     },
                      }
         return self_state
@@ -192,13 +194,16 @@ class cost_layer(_nodes_layer):
     
     def __init__(self,lossfunc='sqe'):
         super().__init__()
-        if lossfunc == 'sqerr':
+        self.lossfunc = lossfunc
+        if self.lossfunc == 'sqe':
             self._lossfunc = lossfunc_sqerr
-        elif lossfunc == 'bce':
+        elif self.lossfunc == 'bce':
             self._lossfunc = lossfunc_bce
         else:
-            raise ValueError('only support \'sqerr\' or \'bce\' as loss function')
-    
+            raise ValueError('only support \'sqe\' or \'bce\' as loss function')
+        self._costbuff = None
+        self._diffcostbuff = None
+
     def calculate_cost(self,trgt):
         self.nodes_chain_call('clear_buffer',{'buffnamelist':('_dcstdintbuff','_dcstdwghbuff','_dcstdbiabuff')},targetchain='upstream')
         if self._parent.output.shape[1:] != trgt.shape[1:]:
@@ -225,14 +230,33 @@ class cost_layer(_nodes_layer):
                         'layer_id':self.id,
                            'child':self._child.id if self._child else None,
                           'parent':self._parent.id if self._child else None,
-                        'lossfunc':self._lossfunc.__func__.__name__,
+                        'lossfunc':self.lossfunc,
                           'params':{
-                                    'nodenums':self.nodenums,
-                                    '_costbuff':self._costbuff,
-                                    '_diffcostbuff':self._diffcostbuff,
+                                    '_costbuff':self._costbuff.tolist(),
+                                    '_diffcostbuff':self._diffcostbuff.tolist(),
                                     },
                      }
         return self_state
+
+
+def layer_factory(state):
+    layertype = state['layer_type']
+    if layertype == 'input_layer':
+        layer = input_layer(None)
+        layer.nodenums = state['nodenums']
+    elif layertype == 'neuron_layer':
+        actvfunc = state['actvfunc']
+        layer = neuron_layer(None,actvfunc)
+        layer.nodenums = state['nodenums']
+    elif layertype == 'cost_layer':
+        lossfunc = state['lossfunc']
+        layer = cost_layer(lossfunc)
+    layer._id = state['layer_id']
+    layer._childid = state['child']
+    layer._parentid = state['parent']
+    for key,val in state['params'].items():
+        setattr(layer,key,numpy.array(val))
+    return layer
 
 
 class gradientdescent(object):
@@ -244,14 +268,15 @@ class gradientdescent(object):
     @property
     def learnrate(self):
         return self.learn_rate*self.decay_rate**(self.iter_count//self.decay_step)
-    def update_params(self,params,dcostdpara):
+    def calculate_dparam(self,dcostdpara):
         self.iter_count += 1
         mt = numpy.mean(dcostdpara,axis=0)
-        grad = self.learnrate*mt
-        return params - grad
+        dparam = self.learnrate*mt
+        return dparam
     @property
     def state(self):
-        self_state = {'learn_rate':self.learn_rate,
+        self_state = {'method':'gradientdescent',
+                      'learn_rate':self.learn_rate,
                       'decay_step':self.decay_step,
                       'decay_rate':self.decay_rate,
                       'iter_count':self.iter_count,}
@@ -263,16 +288,16 @@ class momentum(gradientdescent):
         super().__init__(learn_rate=learn_rate, decay_step=decay_step, decay_rate=decay_rate)
         self.beta1 = beta1
         self.mtn1 = 0.0
-    def update_params(self,params,dcostdpara):
+    def calculate_dparam(self,dcostdpara):
         self.iter_count += 1
         mt = self.beta1*self.mtn1 + dcostdpara
         self.mtn1 = numpy.mean(mt,axis=0)
-        grad = self.learnrate*self.mtn1
-        return params - grad
+        dparam = self.learnrate*self.mtn1
+        return dparam
     @property
     def state(self):
         self_state = super().state
-        self_state.update({'beta1':self.beta1,'mtn1':self.mtn1,})
+        self_state.update({'method':'momentum','beta1':self.beta1,'mtn1':self.mtn1.tolist(),})
         return self_state
 
 
@@ -282,17 +307,17 @@ class rmsprop(gradientdescent):
         self.beta2 = beta2
         self.eps = 1e-16
         self.vtn1 = 0.0
-    def update_params(self,params,dcostdpara):
+    def calculate_dparam(self,dcostdpara):
         self.iter_count += 1
         vt = self.beta2*self.vtn1 + (1-self.beta2)*dcostdpara**2
         mt = (1.0/(numpy.sqrt(vt)+self.eps))*dcostdpara
         self.vtn1 = numpy.mean(vt,axis=0)
-        grad = self.learnrate*numpy.mean(mt,axis=0)
-        return params - grad
+        dparam = self.learnrate*numpy.mean(mt,axis=0)
+        return dparam
     @property
     def state(self):
         self_state = super().state
-        self_state.update({'beta2':self.beta2,'eps':self.eps,'vtn1':self.vtn1,})
+        self_state.update({'method':'rmsprop','beta2':self.beta2,'eps':self.eps,'vtn1':self.vtn1.tolist(),})
         return self_state
 
 
@@ -304,7 +329,7 @@ class adam(gradientdescent):
         self.eps = 1e-16
         self.mtn1 = 0.0
         self.vtn1 = 0.0
-    def update_params(self,params,dcostdpara):
+    def calculate_dparam(self,dcostdpara):
         self.iter_count += 1
         mt_corr = 1 - self.beta1**self.iter_count
         vt_corr = 1 - self.beta2**self.iter_count
@@ -312,20 +337,36 @@ class adam(gradientdescent):
         vt = self.beta2*self.vtn1 + (1-self.beta2)*dcostdpara**2
         self.mtn1 = numpy.mean(mt,axis=0)
         self.vtn1 = numpy.mean(vt,axis=0)
-        grad = self.learnrate*(self.mtn1/mt_corr)*(1.0/(numpy.sqrt(self.vtn1/vt_corr) + self.eps))
-        return params - grad
+        dparam = self.learnrate*(self.mtn1/mt_corr)*(1.0/(numpy.sqrt(self.vtn1/vt_corr) + self.eps))
+        return dparam
     @property
     def state(self):
         self_state = super().state
-        self_state.update({'beta1':self.beta2,'beta1':self.beta2,'eps':self.eps,'mtn1':self.mtn1,'vtn1':self.vtn1,})
+        self_state.update({'method':'adam','beta1':self.beta2,'beta1':self.beta2,'eps':self.eps,'mtn1':self.mtn1.tolist(),'vtn1':self.vtn1.tolist(),})
         return self_state
+
+
+def optim_factory(state):
+    method = state['method']
+    if method == 'gradientdescent':
+        optim = gradientdescent()
+    elif method == 'momentum':
+        optim = momentum()
+    elif method == 'rmsprop':
+        optim = rmsprop()
+    elif method == 'adam':
+        optim = adam()
+    for key,val in state.items():
+        setattr(optim,key,val if not(key in ('mtn1','vtn1',)) else numpy.array(val))
+    return optim
 
 
 class optimizer(object):
     def __init__(self,method,setting={}):
-        if not method in ('gradientdescent','momentum','rmsprop','adam'):
+        self.method = method
+        if not self.method in ('gradientdescent','momentum','rmsprop','adam'):
             raise ValueError('Invalid optimization method, only \'gradientdescent\',\'momentum\',\'rmsprop\' and \'adam\' are support')
-        self._optmclss = {'gradientdescent':gradientdescent,'momentum':momentum,'rmsprop':rmsprop,'adam':adam}[method]
+        self._optmclss = {'gradientdescent':gradientdescent,'momentum':momentum,'rmsprop':rmsprop,'adam':adam}[self.method]
         self._setting = setting
     def assign_resplyrs(self,nnlyrs):
         self._resplyrs = nnlyrs
@@ -334,9 +375,18 @@ class optimizer(object):
             self._respoptm[layr.id] = {'weight':self._optmclss(**self._setting),
                                        'bias':self._optmclss(**self._setting)}
     def adjustparam(self):
+        numpy.seterr(all='ignore')
         for layr in self._resplyrs:
-            layr._weight = self._respoptm[layr.id]['weight'].update_params(layr._weight,layr.dcstdwgh)
-            layr._bias = self._respoptm[layr.id]['bias'].update_params(layr._bias,layr.dcstdbia)
+            layr._weight -= numpy.nan_to_num( self._respoptm[layr.id]['weight'].calculate_dparam(layr.dcstdwgh) )
+            layr._bias   -= numpy.nan_to_num( self._respoptm[layr.id]['bias'].calculate_dparam(layr.dcstdbia) )
+        numpy.seterr(all='raise')
+    @property
+    def state(self):
+        self_state = {
+                      'method':self.method,
+                      '_respoptm':{id:{'weight':optim['weight'].state,'bias':optim['bias'].state} for id,optim in self._respoptm.items()},
+                     }
+        return self_state
 
 
 class sequential_nn_model():
@@ -383,8 +433,40 @@ class sequential_nn_model():
         self.inputlayer.output = inptarry # assign input
         traincost = self.costlayer.calculate_cost(trgtarry) # assign target-output
         self.optimizer.adjustparam()
-
         return traincost
+
+    @property
+    def state(self):
+        self_state = {
+                    'inputlayer.id':self.inputlayer.id,
+                    'outputlayer.id':self.outputlayer.id,
+                    'costlayer.id':self.costlayer.id,
+                    'neuronlayers.id':[layer.id for layer in self.neuronlayers],
+                    'layers_state':{layer.id:layer.state for layer in self.layers},
+                    'optimizer_state':self.optimizer.state
+                    }
+        return self_state
+
+    def restore_state(self,state):
+        # layers restoration
+        layers_store = {int(id):layer_factory(state) for id,state in state['layers_state'].items()}
+        self.inputlayer = layers_store[state['inputlayer.id']]
+        self.outputlayer = layers_store[state['outputlayer.id']]
+        self.costlayer = layers_store[state['costlayer.id']]
+        self.neuronlayers = [layers_store[id] for id in state['neuronlayers.id']]
+        self.layers = [self.inputlayer] + self.neuronlayers + [self.outputlayer,self.costlayer]
+        for layer in self.layers:
+            if not layer._childid is None: layer._child = layers_store[layer._childid]
+            if not layer._parentid is None: layer._parent = layers_store[layer._parentid]
+        # optimizer restoration
+        optim_state = state['optimizer_state']
+        self.optimizer = optimizer(optim_state['method'])
+        self.optimizer._resplyrs = self.neuronlayers
+        self.optimizer._respoptm = {}
+        for id,optimstate in optim_state['_respoptm'].items():
+            self.optimizer._respoptm[int(id)] = {'weight':optim_factory(optimstate['weight']),
+                                                 'bias':optim_factory(optimstate['bias']),}
+
 
 # credits and refs
 # https://towardsdatascience.com/part-1-a-neural-network-from-scratch-foundation-e2d119df0f40 <<< foundation
