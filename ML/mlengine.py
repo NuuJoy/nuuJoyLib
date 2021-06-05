@@ -222,7 +222,7 @@ class cost_layer(_nodes_layer):
     def diffcost(self):
         if self._diffcostbuff is None:
             raise AttributeError('cost not be calculated, should call self.calculate_cost with passing target')
-        return numpy.mean(self._diffcostbuff,axis=0)
+        return self._diffcostbuff
 
     @property
     def state(self):
