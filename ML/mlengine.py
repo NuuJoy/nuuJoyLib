@@ -1,5 +1,18 @@
 
 
+'''
+train_uinput.shape = [nSample x nInput x 1]
+train_output.shape = [nSample x nOutput x 1]
+model = sequential_nn_model(input_layer(len(actionlist)),
+                            neuron_layer(len(actionlist),actvfunc='relu'),
+                            neuron_layer(len(actionlist),actvfunc='sigmoid'),
+                            cost_layer(lossfunc='bce'),
+                            optimizer=optimizer(method='adam',setting={'decay_step':2048,'decay_rate':1.0,'learn_rate':0.1}),)
+model.train(train_uinput,train_output)
+pred_output = model.predict(test_uinput)
+'''
+
+
 import numpy
 numpy.seterr(all='raise') # raise error if numpy got under/overflow or numpy will silently produce 'nan'
 
@@ -59,7 +72,7 @@ class input_layer(_nodes_layer):
                            'child':self._child.id if self._child else None,
                           'parent':self._parent.id if self._parent else None,
                           'nodenums':self.nodenums,
-                          'params':{'_outputbuff':self._outputbuff.tolist(),},
+                          'params':{'_outputbuff':self._outputbuff.tolist() if isinstance(self._outputbuff,(numpy.ndarray,)) else self._outputbuff,},
                      }
         return self_state
     def restore_state(self,state):
@@ -169,12 +182,12 @@ class neuron_layer(_nodes_layer):
                         'actvfunc':self.actvfunc,
                         'nodenums':self.nodenums,
                           'params':{
-                                    '_outputbuff':self._outputbuff.tolist(),
-                                    '_weight':self._weight.tolist(),
-                                    '_bias':self._bias.tolist(),
-                                    '_dcstdintbuff':self._dcstdintbuff.tolist(),
-                                    '_dcstdwghbuff':self._dcstdwghbuff.tolist(),
-                                    '_dcstdbiabuff':self._dcstdbiabuff.tolist(),
+                                    '_outputbuff':self._outputbuff.tolist() if isinstance(self._outputbuff,(numpy.ndarray,)) else self._outputbuff,
+                                    '_weight':self._weight.tolist() if isinstance(self._weight,(numpy.ndarray,)) else self._weight,
+                                    '_bias':self._bias.tolist() if isinstance(self._bias,(numpy.ndarray,)) else self._bias,
+                                    '_dcstdintbuff':self._dcstdintbuff.tolist() if isinstance(self._dcstdintbuff,(numpy.ndarray,)) else self._dcstdintbuff,
+                                    '_dcstdwghbuff':self._dcstdwghbuff.tolist() if isinstance(self._dcstdwghbuff,(numpy.ndarray,)) else self._dcstdwghbuff,
+                                    '_dcstdbiabuff':self._dcstdbiabuff.tolist() if isinstance(self._dcstdbiabuff,(numpy.ndarray,)) else self._dcstdbiabuff,
                                     },
                      }
         return self_state
@@ -232,8 +245,8 @@ class cost_layer(_nodes_layer):
                           'parent':self._parent.id if self._child else None,
                         'lossfunc':self.lossfunc,
                           'params':{
-                                    '_costbuff':self._costbuff.tolist(),
-                                    '_diffcostbuff':self._diffcostbuff.tolist(),
+                                    '_costbuff':self._costbuff.tolist() if isinstance(self._costbuff,(numpy.ndarray,)) else self._costbuff,
+                                    '_diffcostbuff':self._diffcostbuff.tolist() if isinstance(self._diffcostbuff,(numpy.ndarray,)) else self._diffcostbuff,
                                     },
                      }
         return self_state
@@ -297,7 +310,7 @@ class momentum(gradientdescent):
     @property
     def state(self):
         self_state = super().state
-        self_state.update({'method':'momentum','beta1':self.beta1,'mtn1':self.mtn1.tolist(),})
+        self_state.update({'method':'momentum','beta1':self.beta1,'mtn1':self.mtn1.tolist() if isinstance(self.mtn1,(numpy.ndarray,)) else self.mtn1,})
         return self_state
 
 
@@ -317,7 +330,7 @@ class rmsprop(gradientdescent):
     @property
     def state(self):
         self_state = super().state
-        self_state.update({'method':'rmsprop','beta2':self.beta2,'eps':self.eps,'vtn1':self.vtn1.tolist(),})
+        self_state.update({'method':'rmsprop','beta2':self.beta2,'eps':self.eps,'vtn1':self.vtn1.tolist() if isinstance(self.vtn1,(numpy.ndarray,)) else self.vtn1,})
         return self_state
 
 
@@ -342,7 +355,9 @@ class adam(gradientdescent):
     @property
     def state(self):
         self_state = super().state
-        self_state.update({'method':'adam','beta1':self.beta2,'beta1':self.beta2,'eps':self.eps,'mtn1':self.mtn1.tolist(),'vtn1':self.vtn1.tolist(),})
+        self_state.update({'method':'adam','beta1':self.beta2,'beta1':self.beta2,'eps':self.eps,
+                           'mtn1':self.mtn1.tolist() if isinstance(self.mtn1,(numpy.ndarray,)) else self.mtn1,
+                           'vtn1':self.vtn1.tolist() if isinstance(self.vtn1,(numpy.ndarray,)) else self.vtn1,})
         return self_state
 
 
