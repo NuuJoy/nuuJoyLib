@@ -201,7 +201,11 @@ def lossfunc_bce(pred,trgt,eps=1e-2,diff=False):
         return -1.0*numpy.clip(trgt,eps,1)/numpy.clip(pred,eps,1) + numpy.clip(1.0-trgt,eps,1)/numpy.clip(1.0-pred,eps,1)
 def lossfunc_sqerr(pred,trgt,diff=False):
     return (pred-trgt)**2.0 if not diff else 2.0*(pred-trgt)
-
+def lossfunc_huber(pred,trgt,beta=1.0,diff=False):
+    if not diff:
+        return numpy.where(numpy.abs(pred-trgt)<beta,(1/beta)*0.5*(pred-trgt)**2.0,numpy.abs(pred-trgt)-0.5*beta)
+    else:
+        return numpy.where(numpy.abs(pred-trgt)<beta,(pred-trgt),numpy.sign(pred-trgt))
 
 class cost_layer(_nodes_layer):
     
@@ -212,6 +216,8 @@ class cost_layer(_nodes_layer):
             self._lossfunc = lossfunc_sqerr
         elif self.lossfunc == 'bce':
             self._lossfunc = lossfunc_bce
+        elif self.lossfunc == 'huber':
+            self._lossfunc = lossfunc_huber
         else:
             raise ValueError('only support \'sqe\' or \'bce\' as loss function')
         self._costbuff = None
