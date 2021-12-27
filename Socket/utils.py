@@ -10,7 +10,7 @@ import hashlib
 # from cryptography.fernet import Fernet as fernet
 
 
-__version__ = (2021,2,19,'beta')
+__version__ = (2021,12,27,'beta')
 
 
 def getHostMACAddress():
@@ -100,11 +100,7 @@ class user_socket(object):
             Abstract class that contain simple send/recieve protocol.
             mainly use as server_socket and client_socket parent
     '''
-    def __init__(self,IPAddr=None,port=13666,msgb=b'|msgb|',msge=b'|msge|',
-                                             infb=b'|infb|',infe=b'|infe|',
-                                             dtab=b'|dtab|',dtae=b'|dtae|',
-                                             hshb=b'|hshb|',hshe=b'|hshe|',
-                                             keyb=b'|keyb|',keye=b'|keye|'):
+    def __init__(self,IPAddr=None,port=13666,msgb=None,msge=None,infb=None,infe=None,dtab=None,dtae=None,hshb=None,hshe=None,keyb=None,keye=None):
         self._address_protocol = {'IPv4':socket.AF_INET,'IPv6':socket.AF_INET6}
         self._socket_protocol  = {'TCP':socket.SOCK_STREAM,'UDP':socket.SOCK_DGRAM}
         # connection info
@@ -128,11 +124,16 @@ class user_socket(object):
         if not(isinstance(self._port,(tuple,list,))): self._port = (self._port,)
         self._useport = None
         # syntax word
-        self.syntax = {'msgb':msgb,'msge':msge,
-                       'dtab':dtab,'dtae':dtae,
-                       'infb':infb,'infe':infe,
-                       'hshb':hshb,'hshe':hshe,
-                       'keyb':keyb,'keye':keye}
+        self.syntax = {'msgb':b'|msgb|' if msgb is None else msgb,
+                       'msge':b'|msge|' if msge is None else msge,
+                       'dtab':b'|dtab|' if dtab is None else dtab,
+                       'dtae':b'|dtae|' if dtae is None else dtae,
+                       'infb':b'|infb|' if infb is None else infb,
+                       'infe':b'|infe|' if infe is None else infe,
+                       'hshb':b'|hshb|' if hshb is None else hshb,
+                       'hshe':b'|hshe|' if hshe is None else hshe,
+                       'keyb':b'|keyb|' if keyb is None else keyb,
+                       'keye':b'|keye|' if keye is None else keye}
         # read buffer
         self.databuff = []
         self.dataresd = b''
