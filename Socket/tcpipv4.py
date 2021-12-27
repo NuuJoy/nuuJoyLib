@@ -9,7 +9,7 @@ import multiprocessing.managers
 from nuuJoyLib.Socket.utils import user_socket
 
 
-__version__ = (2021,2,19,'beta')
+__version__ = (2021,12,27,'beta')
 
 
 class server_socket(user_socket):
@@ -99,9 +99,9 @@ class server_socket(user_socket):
                                 timer = time.time()
                             counter += 1
                             timeout_ref = time.time()
-                    except:
-                        print('some exception ignored')
-                rate_hz = counter/(time.time()-timer)
+                    except Exception as err:
+                        print('some exception ignored: {}'.format(err))
+                rate_hz = counter/(timeout_ref-timer)
                 print('data receiving rate: {:0.2f} Hz ({} data)'.format(rate_hz,counter))
                             
 class client_socket(user_socket):
