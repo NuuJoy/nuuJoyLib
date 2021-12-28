@@ -10,7 +10,7 @@ import hashlib
 # from cryptography.fernet import Fernet as fernet
 
 
-__version__ = (2021,12,27,'beta')
+__version__ = (2021,12,28,'beta')
 
 
 def getHostMACAddress():
@@ -22,8 +22,7 @@ def getHostMACAddress():
         for line in resp.stdout.decode().split('\n'):
             if 'BD Address' in line:
                 return line.split(' ')[2]
-        if not(hasattr(self,'hostMACAddress')):
-            raise(ValueError)
+        raise
     except: # Windows
         rawstr = hex(uuid.getnode()).upper()[2:]
         return ''.join([(char if i%2 == 0 else char+':') for i,char in enumerate(rawstr)])[:-1]
