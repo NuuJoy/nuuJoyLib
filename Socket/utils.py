@@ -165,8 +165,9 @@ class user_socket(object):
             self._soc.shutdown(2)
             self._soc.close()
             return False
-    def send_rawb(self,data,conn=None):
+    def send_rawb(self,data,timeout=1.0,conn=None):
         if not conn: conn = self._soc
+        if timeout: conn.settimeout(timeout)
         conn.sendall(data)
     def recv_rawb(self,conn=None,timeout=1.0,buff=1024):
         if not conn: conn = self._soc
@@ -183,14 +184,13 @@ class user_socket(object):
             except ConnectionResetError:
                 datapart = None
         return data
-    def send_msgs(self,inputdata,datainfo=b'',datahash=False,conn=None):
-        if not conn: conn = self._soc
+    def send_msgs(self,inputdata,datainfo=b'',datahash=False,timeout=1.0,conn=None):
         if not(isinstance(inputdata,(tuple,list,))): inputdata = (inputdata,)
         info_block = self.syntax['infb'] + datainfo + self.syntax['infe'] if datainfo else b''
         for data in inputdata:
             hash_block = self.syntax['hshb'] + hashlib.md5(data).digest() + self.syntax['hshe'] if datahash else b''
             data_block = self.syntax['dtab'] + data + self.syntax['dtae']
-            conn.sendall(self.syntax['msgb'] + info_block + data_block + hash_block + self.syntax['msge'])
+            self.send_rawb(self.syntax['msgb'] + info_block + data_block + hash_block + self.syntax['msge'],timeout=timeout,conn=conn)
     def recv_msgs(self,conn=None,timeout=1.0,buff=1024):
         if not conn: conn = self._soc
         if timeout: conn.settimeout(timeout)
@@ -222,12 +222,12 @@ class user_socket(object):
             return output
         else:
             return self.databuff.pop(0) if self.databuff else None
-    def send_msgsszbsstrm(self,inputdata,conn=None):
+    def send_msgsszbsstrm(self,inputdata,timeout=1.0,conn=None):
         if not conn: conn = self._soc
         if not(isinstance(inputdata,(tuple,list,))): inputdata = (inputdata,)
         for data in inputdata:
-            self.send_msgs(str(len(data)).encode(),datainfo=b'szbsstrm',conn=conn)
-            self.send_rawb(data,conn=conn)
+            self.send_msgs(str(len(data)).encode(),datainfo=b'szbsstrm',timeout=timeout,conn=conn)
+            self.send_rawb(data,timeout=timeout,conn=conn)
     def recv_msgsszbsstrm(self,conn=None,timeout=1.0,buff=1024,takelastonly=False):
         if conn is None: conn = self._soc
         if timeout: conn.settimeout(timeout)
