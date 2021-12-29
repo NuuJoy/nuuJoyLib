@@ -7,10 +7,10 @@ import select
 import subprocess
 import uuid
 import hashlib
-# from cryptography.fernet import Fernet as fernet
+from cryptography.fernet import Fernet as fernet
 
 
-__version__ = (2021,12,28,'beta')
+__version__ = (2021,12,29,'beta')
 
 
 def getHostMACAddress():
@@ -28,27 +28,27 @@ def getHostMACAddress():
         return ''.join([(char if i%2 == 0 else char+':') for i,char in enumerate(rawstr)])[:-1]
 
 
-# class ciphers():
-#     def __init__(self,key=None):
-#         self._key   = key if key else fernet.generate_key()
-#         self._suite = fernet(self._key)
-#     @property
-#     def key(self):
-#         return self._key
-#     @key.setter
-#     def key(self,newkey):
-#         self._suite = fernet(newkey)
-#         self._key   = newkey
-#     def encrypt(self,bytedata):
-#         return self._suite.encrypt(bytedata)
-#     def decrypt(self,ncypdata):
-#         return self._suite.decrypt(ncypdata)
-# def encrypt(bytedata,key=None):
-#     if not(key): key = fernet.generate_key()
-#     suite = fernet(key)
-#     return suite.encrypt(bytedata), key
-# def decrypt(bytedata,key):
-#     return fernet(key).decrypt(bytedata)
+class ciphers():
+    def __init__(self,key=None):
+        self._key   = key if key else fernet.generate_key()
+        self._suite = fernet(self._key)
+    @property
+    def key(self):
+        return self._key
+    @key.setter
+    def key(self,newkey):
+        self._suite = fernet(newkey)
+        self._key   = newkey
+    def encrypt(self,bytedata):
+        return self._suite.encrypt(bytedata)
+    def decrypt(self,ncypdata):
+        return self._suite.decrypt(ncypdata)
+def encrypt(bytedata,key=None):
+    if not(key): key = fernet.generate_key()
+    suite = fernet(key)
+    return suite.encrypt(bytedata), key
+def decrypt(bytedata,key):
+    return fernet(key).decrypt(bytedata)
 
 
 class msgcls(object):
@@ -137,9 +137,9 @@ class user_socket(object):
         self.databuff = []
         self.dataresd = b''
         # encoder
-        # self._ciphers  = ciphers()
-        # self.encryptor = self._ciphers.encrypt
-        # self.decryptor = self._ciphers.decrypt
+        self._ciphers  = ciphers()
+        self.encryptor = self._ciphers.encrypt
+        self.decryptor = self._ciphers.decrypt
         #hasher
     @property
     def IPAddr(self):
@@ -147,9 +147,9 @@ class user_socket(object):
     @property
     def port(self):
         return self._useport
-    # @property
-    # def secrkey(self):
-    #     return self._ciphers.key
+    @property
+    def secrkey(self):
+        return self._ciphers.key
     def __enter__(self):
         self._soc = socket.socket(self._address_protocol['IPv4'],self._socket_protocol['TCP'])
     def __exit__(self,exc_type, exc_value, traceback):
