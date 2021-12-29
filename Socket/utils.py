@@ -59,37 +59,97 @@ class msgcls(object):
     '''
     @staticmethod
     def _xtrct(data,bgn,end):
-        if (bgn and end):
-            bgn_mrk,end_mrk = data.rfind(bgn), data.rfind(end)
-            if not ((bgn_mrk < 0) or (end_mrk < 0) or (end_mrk <= bgn_mrk)):
-                return data[(bgn_mrk+len(bgn)):end_mrk]
-    def __new__(cls,rawmsg,syntax={'msgb':b'|msgb|','msge':b'|msge|'},*args,**kwargs):
-        bgn_mrk,end_mrk = rawmsg.rfind(syntax['msgb']), rawmsg.rfind(syntax['msge'])
+        bgn_mrk,end_mrk = data.rfind(bgn), data.rfind(end)
         if not ((bgn_mrk < 0) or (end_mrk < 0) or (end_mrk <= bgn_mrk)):
-            return super(msgcls,cls).__new__(cls,*args,**kwargs)
-    def __init__(self,rawmsg,syntax={'msgb':b'|msgb|','msge':b'|msge|',
-                                     'dtab':b'|dtab|','dtae':b'|dtae|',
-                                     'infb':b'|infb|','infe':b'|infe|',
-                                     'hshb':b'|hshb|','hshe':b'|hshe|',
-                                     'keyb':b'|keyb|','keye':b'|keye|'},*args,**kwargs):
-        self._rawmsg = rawmsg
-        self.syntax  = syntax
-        bgn_mrk,end_mrk = self._rawmsg.rfind(self.syntax['msgb']), self._rawmsg.rfind(self.syntax['msge'])
-        self._rfnmsg = self._rawmsg[bgn_mrk:(end_mrk+len(self.syntax['msge']))]
-    def __repr__(self):
-        return str(self._rfnmsg)
+            return data[(bgn_mrk+len(bgn)):end_mrk]
+    def __init__(self,inputphrase=None,syntax={'msgb':b'|msgb|','msge':b'|msge|',
+                                          'dtab':b'|dtab|','dtae':b'|dtae|',
+                                          'infb':b'|infb|','infe':b'|infe|',
+                                          'hshb':b'|hshb|','hshe':b'|hshe|',
+                                          'keyb':b'|keyb|','keye':b'|keye|'}):
+        self.syntax = syntax
+        if isinstance(inputphrase,(bytes,)):
+            bgn_mrk,end_mrk = inputphrase.rfind(self.syntax['msgb']), inputphrase.rfind(self.syntax['msge'])
+            if not ((bgn_mrk < 0) or (end_mrk < 0) or (end_mrk <= bgn_mrk)):
+                rfnmsg = inputphrase[bgn_mrk:(end_mrk+len(self.syntax['msge']))]
+                self._data = self._xtrct(rfnmsg,self.syntax['dtab'],self.syntax['dtae'])
+                self._info = self._xtrct(rfnmsg,self.syntax['infb'],self.syntax['infe'])
+                hash = self._xtrct(rfnmsg,self.syntax['hshb'],self.syntax['hshe'])
+                if hash:
+                    self._hash = True
+                    if hash != hashlib.md5(self.encryptdata).digest():
+                        raise ValueError('data and hash not match.')
+                else:
+                    self._hash = False
+                self._key = self._xtrct(rfnmsg,self.syntax['keyb'],self.syntax['keye'])
+                if self._key:
+                    self._ciphers = ciphers(self._key)
+            else:
+                raise ValueError('invalid bytes input phrase syntax.')
+        elif inputphrase is None:
+            self._data = self._info = self._hash = self._key = self._ciphers = None
+        else:
+            raise ValueError('invalid input phrase, expect \'bytes\' or \'None\' (got {})'.format(inputphrase.__class__.__name__))
     @property
-    def info(self):
-        return self._xtrct(self._rfnmsg,self.syntax['infb'],self.syntax['infe'])
-    @property
-    def hash(self):
-        return self._xtrct(self._rfnmsg,self.syntax['hshb'],self.syntax['hshe'])
-    @property
-    def key(self):
-        return self._xtrct(self._rfnmsg,self.syntax['keyb'],self.syntax['keye'])
+    def encryptdata(self):
+        return self._ciphers.encrypt(self.data) if self.key else self.data
     @property
     def data(self):
-        return self._xtrct(self._rfnmsg,self.syntax['dtab'],self.syntax['dtae'])
+        return self._data
+    @data.setter
+    def data(self,newdata):
+        if not (isinstance(newdata,(bytes,)) or (newdata is None)):
+            raise TypeError('invalid data type, expect \'bytes\' (got {})'.format(newdata.__class__.__name__))
+        self._data = newdata
+    @property
+    def info(self):
+        return self._info
+    @info.setter
+    def info(self,newinfo):
+        if not (isinstance(newinfo,(bytes,)) or (newinfo is None)):
+            raise TypeError('invalid info type, expect \'bytes\' (got {})'.format(newinfo.__class__.__name__))
+        self._info = newinfo
+    @property
+    def hash(self):
+        return hashlib.md5(self.encryptdata).digest() if (self._hash and self.encryptdata) else None
+    @hash.setter # pass True/False/None to turn on/off hashing, or pass bytes to do hash checking
+    def hash(self,newhash):
+        if isinstance(newhash,(bool,)) or (newhash is None):
+            self._hash = True if newhash else None
+        elif isinstance(newhash,(bytes,)):
+            if hash != self.hash:
+                raise ValueError('data and hash not match.')
+            else:
+                self._hash = True
+        else:
+            raise TypeError('invalid hash setting type, expect \'bool\' or \'None\' (got {})'.format(newhash.__class__.__name__))
+    @property
+    def key(self):
+        return self._key
+    @key.setter
+    def key(self,newkey):
+        if (newkey is None) or (newkey is False):
+            self._ciphers = self._key = None
+        elif newkey is True:
+            self._key = fernet.generate_key()
+            self._ciphers = ciphers(self._key)
+        elif isinstance(newkey,(bytes,)):
+            self._ciphers = ciphers(newkey)
+            self._key = newkey
+        else:
+            raise ValueError('invalid input key, expect \'bytes\', \'bool\' or \'None\' (got {})'.format(newkey.__class__.__name__))
+    @property
+    def phrase(self):
+        output = b''
+        if self.info: output += self.syntax['infb'] + self.info + self.syntax['infe']
+        if self.encryptdata: output += self.syntax['dtab'] + self.encryptdata + self.syntax['dtae']
+        if self.hash: output += self.syntax['hshb'] + self.hash + self.syntax['hshe']
+        return self.syntax['msgb'] + output + self.syntax['msge']
+    @property
+    def phrasesize(self):
+        return len(self.phrase)
+    def __repr__(self):
+        return 'info: {}\ndata: {}\nencryptdata: {}\nhash: {}\nkey: {}\nphrase: {}\nphrasesize: {}\n'.format(self.info,self.data,self.encryptdata,self.hash,self.key,self.phrase,self.phrasesize)
 
 
 class user_socket(object):
