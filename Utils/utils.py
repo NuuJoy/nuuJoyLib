@@ -8,6 +8,10 @@ import random
 import string
 import statistics
 import collections
+from configparser import ConfigParser
+import subprocess
+from io import BytesIO
+
 try: # tkinter import exception for using in Pythonista
     import tkinter
     import tkinter.filedialog
@@ -15,7 +19,7 @@ except ModuleNotFoundError:
     print('Fail importing tkinter')
 
 
-__version__ = (2021,3,2,'beta')
+__version__ = (2024,2,29,'beta')
 
 
 class logFileGen(object):
@@ -268,3 +272,120 @@ def userDialog(dialogType,title=None,multiple=False,initialdir=None,filetypes=((
     else:
         raise ValueError('Invalid [dialogType]')
 
+
+class config_reader(dict):
+    class _none_dict(dict):
+        def __missing__(self, misskey):
+            for key in self.keys():
+                if key.casefold() == misskey.casefold():
+                    return self[key]
+            return None
+
+    @staticmethod
+    def _strip(text):
+        try:
+            text = text[:text.index(';')].strip()  # remove inline comment
+        except ValueError:
+            pass
+        return text
+
+    @staticmethod
+    def _tryeval(text):
+        try:
+            text = eval(text)
+        except Exception:
+            pass
+        return text
+
+    def __init__(self, filepath='config.ini', tryeval=False, strip=True, case=False):
+        cnfg = ConfigParser()
+        if case:
+            cnfg.optionxform = str
+        cnfg.read(filepath)
+        _tryeval = self._tryeval if tryeval else lambda x: x
+        _strip = self._strip if strip else lambda x: x
+
+        super().__init__({
+            section: self._none_dict({
+                key: _tryeval(_strip(val))
+                for key, val in cnfg[section].items()
+            }) for section in cnfg.sections()
+        })
+
+    def __missing__(self, misskey):
+        for key in self.keys():
+            if key.casefold() == misskey.casefold():
+                return self[key]
+        return self._none_dict()
+
+    def __str__(self):
+        output = ''
+        for section in self.keys():
+            output += f'{section}\n'
+            for key, val in self[section].items():
+                output += f'    {key}: {val} <{val.__class__.__name__}>\n'
+        return output
+
+
+class with_retry():
+    '''
+    note: thisdecorator need to invoke __call__ at initial,
+    alway decorate with initial argument(s), DONT decorate with bare function
+
+    example:
+
+    @with_retry(retry_max=3)
+    def my_func():
+        ...run something...
+
+    class mycls():
+        @with_retry(retry_max=3)
+        def my_method():
+            ...run something...
+    '''
+    def __init__(self, retry_max, delay=0.0, exceptions=(Exception,)):
+        self._retry_max = retry_max
+        self._delay = delay
+        self._exceptions = exceptions
+
+    def __call__(self, *args):
+        def inner_func(inst=None, *args, **kwargs):
+            for retry in range(1, self._retry_max + 1):
+                try:
+                    if inst is None:
+                        return self._func(*args, **kwargs)
+                    else:
+                        return self._func(inst, *args, **kwargs)
+                except self._exceptions as err:
+                    if retry >= self._retry_max:
+                        raise err
+                    time.sleep(self._delay)
+        self._func = args[0]
+        return inner_func
+
+
+class CLI_Popen():
+    def __init__(self, target, cwd=None):
+        self._target = target
+        if cwd is None:
+            cwd = os.path.dirname(self._target)
+        self._cwd = cwd
+
+    def __enter__(self):
+        self.proc = subprocess.Popen(self._target, cwd=self._cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        while self.proc.poll() is None:
+            self.proc.terminate()
+
+    def read_until(self, expect):
+        with BytesIO() as buff:
+            while not (output := buff.getvalue()).endswith(expect):
+                buff.write(self.proc.stdout.read(1))
+        return output
+
+    def write(self, bytesdata):
+        self.proc.stdin.write(bytesdata)
+        self.proc.stdin.write(b'\n')
+        self.proc.stdin.flush()
