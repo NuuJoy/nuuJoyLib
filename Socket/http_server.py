@@ -10,7 +10,9 @@ import json
 
 
 class Request():
-    def __init__(self, headers, rfile):
+    def __init__(self, path, method, headers, rfile):
+        self.Path = path
+        self.Method = method
         auth = headers['Authorization']
         if auth is None:
             self.Authorization = None
@@ -50,13 +52,24 @@ class Request():
             'Content-Length': content_length
         }
 
-        content = rfile.read(content_length)
+        content = rfile.read(content_length).decode()
         if content_type == 'application/json':
             content = json.loads(content)
-        self.Body = content
+        self.Content = content
+
+    def asdict(self):
+        return {
+            'Path': self.Path,
+            'Method': self.Method,
+            'Authorization': self.Authorization,
+            'Headers': self.Headers,
+            'Content': self.Content,
+        }
 
     def __str__(self):
-        output = 'Authorization:'
+        output = f'Path: {self.Path}\n'
+        output += f'Method: {self.Method}\n'
+        output += 'Authorization:'
         if self.Authorization is None:
             output += ' None\n'
         else:
@@ -66,16 +79,17 @@ class Request():
             for key, val in self.Authorization.items():
                 if key not in ('type', 'token'):
                     output += f'''        {key}: {val}\n'''
-        output += f'''Content-Type: {self.Headers['Content-Type']}\n'''
-        output += f'''Content-Length: {self.Headers['Content-Length']}\n'''
-        output += f'''Content: {self.Body}\n'''
+        output += 'Headers:\n'
+        output += f'''    Content-Type: {self.Headers['Content-Type']}\n'''
+        output += f'''    Content-Length: {self.Headers['Content-Length']}\n'''
+        output += f'''Content: {self.Content}\n'''
         return output
 
 
 class Simple_Request_Handler(http.server.BaseHTTPRequestHandler):
 
     def get_request(self):
-        return Request(self.headers, self.rfile)
+        return Request(self.path, self.command, self.headers, self.rfile)
 
     def send_response(self, code: int, message: object = None) -> None:
         super().send_response(code)
@@ -97,36 +111,20 @@ class Simple_Request_Handler(http.server.BaseHTTPRequestHandler):
         self.wfile.write(message)
 
     def do_GET(self):
-        print('Method: GET')
-        request = self.get_request()
-        print(request)
-        self.send_response(
-            200, {'status': 'success', 'message': 'GET successfully'}
-        )
+        return self.common_response(self.get_request())
 
     def do_POST(self):
-        print('Method: POST')
-        request = self.get_request()
-        print(request)
-        self.send_response(
-            200, {'status': 'success', 'message': 'POST successfully'}
-        )
+        return self.common_response(self.get_request())
 
     def do_PUT(self):
-        print('Method: PUT')
-        request = self.get_request()
-        print(request)
-        self.send_response(
-            200, {'status': 'success', 'message': 'PUT successfully'}
-        )
+        return self.common_response(self.get_request())
 
     def do_DELETE(self):
-        print('Method: DELETE')
-        request = self.get_request()
-        print(request)
-        self.send_response(
-            200, {'status': 'success', 'message': 'DELETE successfully'}
-        )
+        return self.common_response(self.get_request())
+
+    def common_response(self, request):
+        print(request.asdict())
+        self.send_response(200, request.asdict())
 
 
 if __name__ == "__main__":
