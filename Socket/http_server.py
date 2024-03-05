@@ -123,7 +123,6 @@ class Simple_Request_Handler(http.server.BaseHTTPRequestHandler):
         return self.common_response(self.get_request())
 
     def common_response(self, request):
-        print(request.asdict())
         self.send_response(200, request.asdict())
 
 
